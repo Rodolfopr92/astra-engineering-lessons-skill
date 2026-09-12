@@ -12,15 +12,15 @@ Its purpose is narrow: correct stale model priors, show the current API contract
 | SurrealDB Rust SDK | 3.2.4 |
 | Rust proving baseline | 1.96 |
 | Official SDK minimum Rust | 1.89 |
-| Tauri capability coverage | 2.x current path/runtime APIs |
+| Tauri path/API documentation | 2.11.5 |
 | Last full verification | 2026-09-12 |
 | Maximum routine reverification interval | 90 days |
 
-The current official SurrealDB Rust docs identify SDK/server **3.2.4** as current. Current Tauri docs are in the **2.x** line.
+The current official SurrealDB Rust docs identify SDK/server **3.2.4** as current. The Tauri path APIs verified for this skill are from **Tauri 2.11.5**.
 
 ## The rule that prevents this skill becoming stale
 
-If the target repository uses a SurrealDB server/engine or Rust SDK version other than **3.2.4**, version-sensitive claims in this repository become **unverified for that target** until checked against the target version.
+If the target repository uses a SurrealDB server/engine or Rust SDK version other than **3.2.4**, or a Tauri-sensitive claim targets a Tauri version other than **2.11.5**, affected version-sensitive claims become **unverified for that target** until checked against the target version.
 
 Reverify when:
 
@@ -108,7 +108,7 @@ git clone https://github.com/Rodolfopr92/astra-engineering-lessons-skill.git \
   ~/.gemini/antigravity/skills/surreal_rust_tauri
 ```
 
-The GitHub repository slug is still the historical `astra-engineering-lessons-skill` because repository-settings rename is not exposed by the connected GitHub contents interface used for this maintenance pass. The intended repository name is **`surreal_rust_tauri`** as well.
+The GitHub repository slug is still the historical `astra-engineering-lessons-skill` because repository-settings rename is not exposed by the connected GitHub interface used for this maintenance pass. The intended repository name is **`surreal_rust_tauri`** as well.
 
 ## Maintenance workflow
 
