@@ -1,66 +1,213 @@
 # Rigorous CI Harness & Testing Discipline
 
-## 1. The 8-Stage Zero-Compromise Gate
+This reference extracts reusable testing lessons from an 8-stage Rust/Python/SurrealDB integration gate. The exact stage list is a **proving-project convention**; the transferable capability is knowing which claims require real-system evidence.
 
-Astra enforces an automated 8-stage gate in CI (`scripts/test_full.sh`) where a failure in any single stage blocks merge:
+---
+
+## 1. Example High-Assurance Gate
+
+Astra's current gate runs:
 
 ```text
 1. Shell syntax checks (bash -n)
 2. Python syntax checks (py_compile)
-3. Python unit, security, and conversion tests (unittest)
-4. Rust formatting check (cargo fmt -- --check)
-5. Rust deterministic unit & integration tests (cargo test --locked)
-6. SurrealDB 3.2.4 destructive isolation & SurrealKV restart persistence tests
-7. Clippy linter with warnings as errors (cargo clippy --all-targets -- -D warnings)
-8. RustSec dependency vulnerability audit (cargo audit)
+3. Python unit/security/conversion tests
+4. Rust formatting (cargo fmt -- --check)
+5. Rust deterministic unit/integration tests (cargo test --locked)
+6. Live SurrealDB 3.2.4 tenant + SurrealKV restart tests
+7. Clippy with warnings denied
+8. RustSec dependency audit
 ```
 
-No pull request is allowed to bypass this gate.
+This is **PROJECT CONVENTION**. Another repository may need different stages.
 
----
+The general rule is:
 
-## 2. Testing the Persistence Reality: The Kill/Restart Loop
+> Every important production claim should have a gate that exercises the boundary responsible for that claim.
 
-### The Danger of Mocking
-In many projects, integration tests use in-memory databases or mock repositories. In Astra, that approach would have completely hidden:
-- The SurrealDB `RecordId` vs `id: String` deserialization failure.
-- Database index initialization bugs.
-- WebSocket session teardown and reconnection leaks.
-- WAL write serialization failures on disk.
+Examples:
 
-### The CI Restart Pattern
-Stage 6 of the gate performs real destructive testing:
-1. Provisions a random ephemeral port and starts `surreal start --log error surrealkv://$TEST_DB_DIR`.
-2. Runs `persistence_seed_before_restart`, persisting records and verifying initial state.
-3. Kills the SurrealDB process via OS SIGTERM (`kill "$SURREAL_PID"`).
-4. Restarts a new SurrealDB instance on the exact same storage directory.
-5. Runs `persistence_verify_after_restart`, reconnecting via WebSocket and asserting that all records, relationships, and counters survived intact.
-
----
-
-## 3. Grounding Assertions in Fixture Realities
-
-### The Mistake
-During Phase 5 testing, a test assertion failed with:
 ```text
-assertion `left == right` failed
-  left: 800.00
- right: 1850.00
-```
-The test author had copied assertion code from `valid_nfe_cnpj_cnpj.xml` (which had a total of 1850.00) into the test for `valid_nfe_proc.xml` (which had a total of 800.00).
+claim: persists after process restart
+→ kill/restart real database
 
-### The Lesson
-- Never copy-paste test assertions blindly.
-- Ground every assertion in the actual, inspected content of the fixture file.
-- When creating fixtures, document the exact expected totals and key properties in comments or commit notes.
+claim: tenant isolation
+→ write/read through separate real tenant sessions
+
+claim: worker cannot escape temp directory
+→ attack filesystem paths/symlinks
+
+claim: exact fiscal arithmetic
+→ test decimal edge cases
+```
 
 ---
 
-## 4. Compiler & Linter Discipline
+## 2. Unit Tests and Mocks Are Useful, but Boundary Claims Need Boundary Tests
 
-1. **`-D warnings` in Clippy**:
-   Treating warnings as errors prevents code smells, redundant operations (e.g. `unnecessary_unwrap`), and subtle bugs from accumulating.
-2. **Deterministic Locking**:
-   Always pass `--locked` to all `cargo test`, `cargo clippy`, and `cargo audit` commands in CI to ensure reproducibility and prevent silent dependency upgrades.
-3. **Machine Stability Under Load**:
-   On resource-constrained developer workstations or shared runners, unbound parallel jobs can cause memory thrashing or CPU starvation. Always pass `-j 2` to control parallelism and maintain system stability.
+Mocks are excellent for:
+
+- fast feedback;
+- deterministic failure injection;
+- pure business logic;
+- uncommon error branches.
+
+They are insufficient evidence for things the mock does not implement.
+
+A database mock/in-memory engine cannot, by itself, prove:
+
+- remote protocol serialization;
+- real record-ID conversion;
+- disk durability;
+- WAL/recovery behavior;
+- process restart;
+- reconnection.
+
+A fake downloader cannot, by itself, prove the real Telegram/network adapter aborts an oversized stream at the threshold.
+
+So use both layers deliberately rather than adopting “never mocks” as a slogan.
+
+---
+
+## 3. Persistence Reality: Kill / Restart / Re-read
+
+A proving restart sequence is:
+
+```text
+start real SurrealDB 3.2.4 on surrealkv://<test-dir>
+→ seed production record types
+→ assert seed state
+→ terminate server process
+→ verify it stopped
+→ restart fresh process on same directory
+→ reconnect over deployed protocol
+→ re-read typed records
+→ assert exact values
+```
+
+This caught a real failure:
+
+```text
+Expected string, got record
+```
+
+that ordinary tests had not exposed.
+
+### Key lesson
+
+Do not let “tests passed” collapse different claims into one bucket. Ask **which boundary the passing test actually exercised**.
+
+---
+
+## 4. Ground Assertions in Fixture Reality
+
+A Phase 5 restart test once expected a total copied from a different NF-e fixture:
+
+```text
+actual:   800.00
+expected: 1850.00
+```
+
+The implementation was not necessarily wrong. The assertion was detached from its source fixture.
+
+Rules:
+
+1. inspect the exact fixture used by the test;
+2. derive expected values from that fixture deliberately;
+3. avoid copying assertions between fixtures without re-grounding them;
+4. give fixtures stable semantic names;
+5. for complex fixtures, document the few fields the test treats as canonical.
+
+A failing test is evidence of inconsistency, not automatic proof that production code is the faulty side.
+
+---
+
+## 5. Exact-SHA CI Evidence
+
+When an agent says “CI is green,” record:
+
+```text
+repository
+branch / PR
+exact head SHA
+workflow/run ID
+conclusion
+```
+
+A green run on an older head does not validate a newer commit.
+
+Likewise, a local green table does not substitute for a remote CI claim if the merge policy relies on the remote environment.
+
+This exact-SHA discipline prevented earlier handoff prose from being mistaken for repository state.
+
+---
+
+## 6. Compiler and Linter Discipline
+
+Useful Rust defaults for a locked application repository include:
+
+```bash
+cargo fmt -- --check
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo build --locked --release
+```
+
+`--locked` is relevant to Cargo commands that resolve dependencies from `Cargo.lock`.
+
+`cargo audit` already audits the lockfile dependency graph; use the options supported by the installed `cargo-audit` version rather than mechanically adding unrelated Cargo flags from memory.
+
+The reusable lesson is **dependency determinism**, not a ritual command string.
+
+---
+
+## 7. Dependency Security Claims Need Reachability Humility
+
+A vulnerability appearing in `Cargo.lock` tells you the dependency graph contains an affected package/version. It does not automatically prove your application reaches the vulnerable behavior.
+
+Conversely, dismissing an advisory because “we probably don't use that code path” is also insufficient.
+
+When an advisory is temporarily ignored:
+
+1. record the advisory ID;
+2. inspect reverse dependency paths (`cargo tree -i ...` where useful);
+3. understand why remediation is blocked;
+4. document the actual exposure assumption;
+5. remove the ignore when upstream resolution becomes available.
+
+Do not turn an ignore list into permanent wallpaper.
+
+---
+
+## 8. Resource-Constrained CI
+
+Limiting parallelism such as `-j 2` can improve reliability on constrained developer machines or runners, but it is not a universal correctness rule.
+
+Choose concurrency based on:
+
+- runner memory;
+- CPU count;
+- link-time pressure;
+- project size;
+- action-minute budget.
+
+The principle is to avoid mistaking infrastructure exhaustion for application failure, while still keeping the gate representative enough to catch real concurrency problems.
+
+---
+
+## 9. A Useful Evidence Ladder
+
+From weakest to strongest for a runtime claim:
+
+```text
+model says it should work
+< static code inspection
+< compiles
+< unit test
+< integration test with fake boundary
+< integration test with real dependency
+< destructive restart/recovery test
+< production observation with monitoring
+```
+
+Not every change needs the top rung. But the strength of the claim should not exceed the strength of the evidence.
