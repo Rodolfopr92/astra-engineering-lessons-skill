@@ -48,6 +48,7 @@ Official SurrealDB documentation currently identifies Rust SDK **3.2.4** as the 
 ├── SKILL.md
 ├── README.md
 └── references/
+    ├── capability-update-template.md
     ├── surrealdb-3-stale-llm-priors.md
     ├── surrealdb-3-contract-and-pitfalls.md
     ├── verification-status.md
@@ -56,6 +57,8 @@ Official SurrealDB documentation currently identifies Rust SDK **3.2.4** as the 
     ├── authoritative-xml-and-fiscal-parsing.md
     └── rigorous-ci-harness-and-testing-discipline.md
 ```
+
+`capability-update-template.md` is the standard format for extending the repository to another breaking API/version gap without losing evidence quality.
 
 ## Evidence vocabulary
 
@@ -107,7 +110,7 @@ When a model generates suspicious code for a fast-moving dependency:
 4. Reproduce behavior with the smallest real compile/runtime test possible.
 5. Fix the consuming project.
 6. Add a regression test.
-7. Add the generalized correction here, with version/evidence labels.
+7. Add the generalized correction here using `references/capability-update-template.md`.
 
 Do not add claims merely because an AI assistant stated them confidently.
 
