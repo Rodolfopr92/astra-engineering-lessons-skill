@@ -2,6 +2,8 @@
 
 **Skill:** `surreal_rust_tauri`  
 **Primary baseline:** SurrealDB server/engine 3.2.4 + Rust SDK 3.2.4  
+**Tauri documentation baseline:** 2.11.5 path APIs  
+**Rust reproducer toolchain:** 1.96.0  
 **Last full verification:** 2026-09-12  
 **Routine expiry:** 90 days maximum, or immediately on target-version mismatch
 
@@ -18,9 +20,17 @@ This ledger exists to stop the skill from becoming the stale prior it was create
 
 ## Version-transfer rule
 
-If a target repo uses SurrealDB server/engine or Rust SDK other than **3.2.4**, all version-sensitive VERIFIED API / TESTED BEHAVIOR rows below become **UNVERIFIED FOR THAT TARGET** until checked for the target version.
+If a target repo uses SurrealDB server/engine or Rust SDK other than **3.2.4**, or a Tauri-sensitive claim targets a Tauri version other than **2.11.5**, the affected version-sensitive VERIFIED API / TESTED BEHAVIOR rows below become **UNVERIFIED FOR THAT TARGET** until checked for the target version.
 
 Case-study evidence from another patch/minor version is not automatically transferable. A 3.2.3 observation can motivate a 3.2.4 reproducer, but does not become 3.2.4 TESTED BEHAVIOR by repetition.
+
+## Independent reproducer evidence
+
+The first reproducer run exposed an assertion-design flaw in the rollback test: the transaction rolled back the table creation too, so a subsequent `SELECT` failed because the table no longer existed. The test was corrected by defining the table outside the transaction.
+
+The corrected suite passed on GitHub Actions run **34691471041**, exact head **`a837f981cdfc78ad27573101373eff1b37cd2b33`**, using Rust **1.96.0** and `surrealdb = "=3.2.4"`. Five tests passed.
+
+Source: `reproducers/surrealdb-3.2.4/tests/core_contract.rs`.
 
 ---
 
@@ -34,8 +44,8 @@ Case-study evidence from another patch/minor version is not automatically transf
 | `#[surreal(...)]` is distinct from Serde attributes | VERIFIED API | [SurrealValue attributes](https://surrealdb.com/docs/reference/rust/concepts/surrealvalue-attributes) |
 | Intrinsic record identifiers use `RecordId` | VERIFIED API | [RecordId 3.2.4](https://docs.rs/surrealdb/3.2.4/surrealdb/types/record_id/struct.RecordId.html) |
 | `type::record()` replaced pre-3.0 `type::thing()` | VERIFIED API | [type::record docs](https://surrealdb.com/docs/reference/query-language/functions/database-functions/type) |
-| `(table, id)` tuple resources remain supported by Rust SDK methods | VERIFIED API | [Working with types / resource examples](https://surrealdb.com/docs/reference/rust/concepts/working-with-types) |
-| Deserializing intrinsic `id` into `String` can fail with a record/string type mismatch | TESTED BEHAVIOR | Astra 3.2.4 restart integration evidence; reproducer being added under `reproducers/` |
+| `(table, id)` tuple resources remain supported by Rust SDK methods | VERIFIED API | [Working with types](https://surrealdb.com/docs/reference/rust/concepts/working-with-types) |
+| A row containing intrinsic `id` decodes into `RecordId`, while the same row does not decode into a struct declaring `id: String` | TESTED BEHAVIOR | Reproducer run 34691471041, `intrinsic_id_is_record_id_not_string` |
 
 ---
 
@@ -44,9 +54,9 @@ Case-study evidence from another patch/minor version is not automatically transf
 | Claim | Status | Claim-level evidence |
 |---|---|---|
 | `.bind()` accepts SDK variable forms through `IntoVariables` / `SurrealValue` | VERIFIED API | [query `.bind()` docs](https://surrealdb.com/docs/reference/rust/methods/query) |
-| Outer `.query(...).await` success can contain failing statements | VERIFIED API | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling) |
+| Outer `.query(...).await` success can contain failing statements | VERIFIED API + TESTED BEHAVIOR | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling); reproducer run 34691471041, `outer_query_success_can_contain_statement_errors` |
 | `.check()` surfaces statement errors | VERIFIED API | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling) |
-| `.take_errors()` preserves indexed statement failures | VERIFIED API | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling) |
+| `.take_errors()` preserves indexed statement failures | VERIFIED API + TESTED BEHAVIOR | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling); reproducer run 34691471041 |
 | Durable control flow should prefer structured error kinds over message matching | VERIFIED API | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling) |
 | `<record>$variable` is universally required for bound dynamic records | FALSE / NOT A GENERAL RULE | Brew & Batch observation only; typed `RecordId` and `type::record()` are also supported |
 | UUID-shaped text record IDs may render with backtick delimiters when cast to string | CASE-STUDY EVIDENCE | ARGOS record-identity tests; version-specific transport behavior |
@@ -58,11 +68,11 @@ Case-study evidence from another patch/minor version is not automatically transf
 | Claim | Status | Claim-level evidence |
 |---|---|---|
 | Rust SDK supports embedded database operation | VERIFIED API | [Rust embedding docs](https://surrealdb.com/docs/reference/rust/embedding) |
-| SurrealKV is available behind `kv-surrealkv` in current crate line | VERIFIED API | [surrealdb 3.2.4 crate](https://docs.rs/crate/surrealdb/3.2.4) |
-| `Surreal::new::<SurrealKv>(...)` can produce a local handle used as `Surreal<Db>` | CASE-STUDY EVIDENCE | Omphalos, Saturno, ARGOS, DELPHIS; target-version compile reproducer added under `reproducers/` |
+| SurrealKV is available behind `kv-surrealkv` in 3.2.4 | VERIFIED API | [surrealdb 3.2.4 crate](https://docs.rs/crate/surrealdb/3.2.4) |
+| `Surreal::new::<SurrealKv>(...)` can be assigned to a local `Surreal<Db>` handle and queried | TESTED BEHAVIOR | Reproducer run 34691471041, `surrealkv_engine_selector_produces_local_db_handle` |
 | SurrealKV historical versioning is opt-in via `.versioned()` | VERIFIED API | [`new()` / versioned backend](https://surrealdb.com/docs/reference/rust/methods/new) |
-| Tauri 2 exposes `app_data_dir()` | VERIFIED API | [Tauri PathResolver](https://docs.rs/tauri/latest/tauri/path/struct.PathResolver.html) |
-| Tauri 2 exposes `app_local_data_dir()` | VERIFIED API | [Tauri PathResolver](https://docs.rs/tauri/latest/tauri/path/struct.PathResolver.html) |
+| Tauri 2.11.5 exposes `app_data_dir()` | VERIFIED API | [Tauri 2.11.5 PathResolver](https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html) |
+| Tauri 2.11.5 exposes `app_local_data_dir()` | VERIFIED API | [Tauri 2.11.5 PathResolver](https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html) |
 | Every Tauri product should choose AppData rather than AppLocalData | FALSE / NOT A GENERAL RULE | Product/platform decision |
 | Same-handle schema reapplication proves process restart durability | FALSE | It proves idempotence, not process restart |
 | Process-separated writer/reader tests provide stronger embedded durability evidence | CASE-STUDY EVIDENCE / TESTING RULE | ARGOS + DELPHIS native validation systems |
@@ -73,12 +83,12 @@ Case-study evidence from another patch/minor version is not automatically transf
 
 | Claim | Status | Claim-level evidence |
 |---|---|---|
-| SCHEMAFULL object fields are strict by default | VERIFIED API | [DEFINE FIELD](https://surrealdb.com/docs/reference/query-language/statements/define/field) |
-| `FLEXIBLE` permits undeclared keys in object-containing fields | VERIFIED API | [DEFINE FIELD](https://surrealdb.com/docs/reference/query-language/statements/define/field) |
-| As of 3.0, undeclared nested SCHEMAFULL fields error rather than being silently omitted | VERIFIED API | [DEFINE FIELD 3.x behavior note](https://surrealdb.com/docs/reference/query-language/statements/define/field) |
+| SCHEMAFULL object fields are strict by default | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer run 34691471041, `schemafull_nested_fields_are_strict_unless_flexible` |
+| `FLEXIBLE` permits undeclared keys in object-containing fields | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer run 34691471041 |
+| As of 3.0, undeclared nested SCHEMAFULL fields error rather than being silently omitted | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD 3.x behavior](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer run 34691471041 |
 | `TYPE RELATION FROM ... TO ...` is current relation-table syntax | VERIFIED API | [DEFINE TABLE](https://surrealdb.com/docs/reference/query-language/statements/define/table) |
 | Every relation edge should be unique by `(in,out)` | FALSE / NOT A GENERAL RULE | Domain-dependent integrity rule |
-| Fresh-install execution can expose nested-schema gaps hidden by long-lived dev state | CASE-STUDY EVIDENCE / TESTING RULE | Brew & Batch and Alexandria validation work |
+| Fresh-install execution can expose nested-schema gaps hidden by long-lived dev state | CASE-STUDY EVIDENCE / TESTING RULE | Brew & Batch validation work |
 
 ---
 
@@ -102,9 +112,9 @@ Case-study evidence from another patch/minor version is not automatically transf
 
 | Claim | Status | Claim-level evidence |
 |---|---|---|
-| Explicit transactions are all-or-nothing and can be aborted | VERIFIED API | [Transactions](https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions) |
+| Explicit transactions are all-or-nothing and can be aborted | VERIFIED API + TESTED BEHAVIOR | [Transactions](https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions); reproducer run 34691471041, `explicit_transaction_failure_rolls_back_prior_write` |
 | Sequential independent `upsert().await?` calls are one transaction | FALSE | Separate calls are not one ACID unit |
-| Failure injection is appropriate evidence for multi-record rollback claims | GENERAL TESTING RULE | Evidence-strength discipline |
+| Failure injection is appropriate evidence for multi-record rollback claims | GENERAL TESTING RULE | Reproducer demonstrates deterministic rollback assertion |
 | Server-side counter mutation can avoid application read-modify-write lost updates | TESTED BEHAVIOR | Astra 3.2.4 concurrent checkpoint tests |
 
 ---
