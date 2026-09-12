@@ -3,36 +3,32 @@
 **Target baseline:** SurrealDB server/engine 3.2.4 + Rust SDK 3.2.4  
 **Last verified:** 2026-09-12
 
-This document exists specifically for AI coding agents whose internal knowledge is dominated by older SurrealDB releases.
-
-Use it as a fast correction layer before generating or reviewing SurrealDB 3.x Rust code.
+This document is a fast correction layer for AI coding agents whose internal knowledge is dominated by older SurrealDB releases.
 
 ## Evidence legend
 
 - **VERIFIED API** — current official SurrealDB documentation / SDK API.
-- **TESTED BEHAVIOR** — independently reproduced against SurrealDB 3.2.4 in live code/tests.
-- **CASE-STUDY EVIDENCE** — observed in a real external proving project but not yet reduced to an independent minimal reproducer in this skill repository.
-- **PROJECT CONVENTION** — a recommended application pattern, not a SurrealDB requirement.
+- **TESTED BEHAVIOR** — independently reproduced against the named version.
+- **CASE-STUDY EVIDENCE** — observed in a real proving repository but not independently reduced by this skill repository.
+- **PROJECT CONVENTION** — application architecture, not a SurrealDB requirement.
 
 ---
 
 ## 1. `type::thing()` became `type::record()`
 
-**STALE PRIOR (2.x and earlier)**
+**STALE**
 
 ```surql
 type::thing('person', $id)
 ```
 
-**CURRENT 3.x API**
+**CURRENT 3.x**
 
 ```surql
 type::record('person', $id)
 ```
 
-**Evidence:** VERIFIED API.
-
-Official 3.x documentation explicitly states that `type::record()` was known as `type::thing()` before SurrealDB 3.0. The behavior is the same; the name changed.
+**VERIFIED API.**
 
 Official source:
 - https://surrealdb.com/docs/reference/query-language/functions/database-functions/type
@@ -41,55 +37,31 @@ Official source:
 
 ## 2. Intrinsic record IDs are typed records, not strings
 
-**STALE / DANGEROUS MODEL**
+**DANGEROUS**
 
 ```rust
 #[derive(SurrealValue)]
-struct Person {
-    id: String,
-    name: String,
-}
+struct Person { id: String }
 ```
-
-If a query returns SurrealDB's intrinsic `id`, the native SDK returns it as a structured record identifier.
 
 **CURRENT TYPE**
 
 ```rust
 use surrealdb::types::{RecordId, SurrealValue};
 
-#[derive(Debug, SurrealValue)]
-struct Person {
-    id: RecordId,
-    name: String,
-}
+#[derive(SurrealValue)]
+struct Person { id: RecordId }
 ```
 
-**Evidence:** VERIFIED API + TESTED BEHAVIOR.
-
-The failure reproduced in a real 3.2.4 restart test as:
+A real 3.2.4 persistence test reproduced:
 
 ```text
 Expected string, got record
 ```
 
-Official sources:
-- https://surrealdb.com/docs/languages/rust
-- https://surrealdb.com/docs/reference/rust/methods/select
+**VERIFIED API + TESTED BEHAVIOR.**
 
-### Project-level alternative
-
-If application code does not need intrinsic `id`, omit it and store an explicit logical domain key:
-
-```rust
-#[derive(Debug, SurrealValue)]
-struct Artifact {
-    artifact_id: String,
-    source_hash: String,
-}
-```
-
-This is a **PROJECT CONVENTION**, not a SurrealDB requirement.
+A valid project alternative is to omit intrinsic `id` and keep an explicit logical key such as `artifact_id`. That is a **PROJECT CONVENTION**.
 
 ---
 
@@ -97,22 +69,18 @@ This is a **PROJECT CONVENTION**, not a SurrealDB requirement.
 
 **STALE ASSUMPTION**
 
-> Serde `Serialize` / `Deserialize` alone define native SDK conversion behavior.
+> Serde derives alone define native SDK conversion.
 
-**CURRENT 3.x MODEL**
+Current 3.x typed SDK code uses `SurrealValue`; its `#[surreal(...)]` attributes are distinct from Serde attributes.
 
 ```rust
 use surrealdb::types::SurrealValue;
 
-#[derive(Debug, SurrealValue)]
-struct Employee {
-    name: String,
-}
+#[derive(SurrealValue)]
+struct Employee { name: String }
 ```
 
-`SurrealValue` converts Rust types to and from SurrealDB values. Its `#[surreal(...)]` attributes resemble Serde attributes but are a separate system.
-
-**Evidence:** VERIFIED API.
+**VERIFIED API.**
 
 Official sources:
 - https://surrealdb.com/docs/reference/rust/concepts/working-with-types
@@ -120,78 +88,70 @@ Official sources:
 
 ---
 
-## 4. Prefer documented 3.x public type paths
+## 4. Prefer current public type paths
 
-Current official examples import:
+Current examples use:
 
 ```rust
 use surrealdb::types::{RecordId, SurrealValue};
 ```
 
-Do not reflexively generate old examples based on internal/legacy paths such as `surrealdb::sql::Thing` without checking the target version.
+Do not reflexively generate old/internal paths such as `surrealdb::sql::Thing` for a 3.x target.
 
-**Evidence:** VERIFIED API.
+**VERIFIED API.**
 
 ---
 
-## 5. Specific-record SDK operations still accept `(table, id)` tuples
+## 5. Tuple record resources still exist
 
-3.x Rust SDK methods can target a specific record using tuple resources:
+Do not over-correct by manually constructing `RecordId` for every SDK operation.
 
 ```rust
 let person: Option<Person> = db.select(("person", "tobie")).await?;
-
-let created: Option<Person> = db
-    .create(("person", "tobie"))
-    .content(data)
-    .await?;
+let created: Option<Person> = db.create(("person", "tobie")).content(data).await?;
 ```
 
-Do not over-correct stale knowledge by assuming every record operation must manually construct `RecordId`.
-
-**Evidence:** VERIFIED API.
-
-Official sources:
-- https://surrealdb.com/docs/reference/rust/methods/select
-- https://surrealdb.com/docs/reference/rust/methods/create
+**VERIFIED API.**
 
 ---
 
-## 6. Raw multi-statement query success must inspect statement errors
+## 6. `.await?` on `query()` does not prove every statement succeeded
 
-For application code using `db.query(...)`, transport-level `.await` success does not mean every SurrealQL statement succeeded. For critical mutations/schema work, inspect the response with `.check()` before consuming results.
+A successful outer request may still contain statement failures.
 
-A proven application pattern is:
+Fail on the first:
 
 ```rust
-let mut response = db
-    .query("SELECT * FROM document_artifact WHERE source_hash = $hash LIMIT 1")
-    .bind(("hash", source_hash.to_string()))
-    .await?
-    .check()?;
-
-let rows: Vec<DocumentArtifactRecord> = response.take(0)?;
+let response = db.query(sql).await?.check()?;
 ```
 
-**Evidence:** TESTED BEHAVIOR / application hardening pattern.
+Preserve all indexed statement failures:
+
+```rust
+let mut response = db.query(sql).await?;
+let failures = response.take_errors();
+```
+
+**VERIFIED API.**
+
+Official sources:
+- https://surrealdb.com/docs/reference/rust/methods/query
+- https://surrealdb.com/docs/reference/rust/concepts/error-handling
+
+Use structured error kinds/predicates for durable control flow instead of matching message strings.
 
 ---
 
 ## 7. Do not use application read-modify-write for hot counters
 
-**RACE-PRONE PATTERN**
+**RACE-PRONE**
 
 ```rust
 let current = load_checkpoint(db).await?;
-let next = current.records_seen + 1;
-save_checkpoint(db, next).await?;
+save_checkpoint(db, current.records_seen + 1).await?;
 ```
 
-Two concurrent callers can read the same value and overwrite each other's increments.
-
-**PROVEN PATTERN**
-
-Use one server-side mutation:
+A proven pattern is one server-side mutation:
 
 ```surql
 UPSERT type::record('ingest_checkpoint', $source_code) SET
@@ -203,183 +163,151 @@ UPSERT type::record('ingest_checkpoint', $source_code) SET
     updated_at = time::now();
 ```
 
-Then inspect statement errors and retry only transaction conflicts that are known to be retryable.
+Then inspect statement errors and retry only known retryable conflicts.
 
-**Evidence:** TESTED BEHAVIOR against SurrealDB 3.2.4 under concurrent updates.
+**TESTED BEHAVIOR on 3.2.4.**
 
 ---
 
-## 8. In-memory success is not disk-persistence evidence
+## 8. In-memory success is not disk/restart evidence
 
-`Mem` is useful for some tests, but it does not prove:
+`Mem` can be useful, but it does not prove SurrealKV durability, process restart, remote serialization, or embedded-engine reopen behavior.
 
-- remote protocol serialization;
-- SurrealKV disk persistence;
-- restart/reopen behavior;
-- WAL/recovery behavior;
-- session reconnection behavior.
-
-For persistence-sensitive code, run a real test matching the deployed connection model.
-
-Remote/server example:
+Strong server evidence:
 
 ```text
-start SurrealDB 3.2.4 on SurrealKV
-→ write typed records
-→ terminate server
-→ restart against same directory
-→ reconnect
-→ read typed records back
+write → kill server → restart same directory → reconnect → re-read
 ```
 
-Embedded example:
+Strong embedded evidence:
 
 ```text
-open embedded SurrealKV on fixed directory
-→ write typed records
-→ close/drop handle
-→ open fresh handle on same directory
-→ read typed records back
+writer process writes SurrealKV → process exits → reader process opens same path → re-read
 ```
 
-**Evidence:** TESTED BEHAVIOR / GENERAL TESTING RULE.
+ARGOS and DELPHIS provide case-study evidence for process-separated embedded restart tests; Astra independently proves remote/server restart persistence.
 
 ---
 
-## 9. Record functions also changed naming conventions in 3.x
+## 9. SurrealDB does not always mean a remote server
 
-SurrealDB 3.x documentation uses record-oriented functions such as:
-
-```surql
-record::id(person:tobie)
-record::table(person:tobie)
-```
-
-and documents `type::record()` as the constructor for record pointers.
-
-When a model emits older names, verify the current function reference instead of assuming backward compatibility.
-
-Official sources:
-- https://surrealdb.com/docs/reference/query-language/functions/database-functions/record
-- https://surrealdb.com/docs/reference/query-language/language-primitives/data-types/record-ids
-
----
-
-## 10. Connection mode is part of the contract
-
-**STALE ASSUMPTION**
-
-> SurrealDB means “connect to a server over WebSocket/HTTP.”
-
-The Rust SDK also supports embedded engines. SurrealKV is available behind the `kv-surrealkv` feature and can persist directly from the application process.
-
-Representative embedded pattern:
+The Rust SDK supports embedded engines.
 
 ```rust
-use surrealdb::{Surreal, engine::local::SurrealKv};
+use surrealdb::{Surreal, engine::local::{Db, SurrealKv}};
 
-let db = Surreal::new::<SurrealKv>(database_path).await?;
+let db: Surreal<Db> = Surreal::new::<SurrealKv>(database_path).await?;
 db.use_ns("app").use_db("main").await?;
 ```
 
-**Evidence:** VERIFIED API.
+**VERIFIED API + repeated CASE-STUDY EVIDENCE.**
 
-Official sources:
-- https://surrealdb.com/docs/reference/rust/embedding
-- https://surrealdb.com/docs/reference/rust/methods/new
-- https://docs.rs/crate/surrealdb-core/3.2.4/features
-
-Before generation, ask:
-
-```text
-remote or embedded?
-which storage feature?
-which persistence path?
-which runtime owns database lifetime?
-```
-
-See `embedded-surrealkv-tauri-local-first.md` for desktop/Tauri guidance.
+For the current 3.2.4 crate, enable the correct embedded storage feature (`kv-surrealkv`).
 
 ---
 
-## 11. SCHEMAFULL nested objects are stricter in 3.x
+## 10. `SurrealKv` is an engine selector, not the local client-handle type
 
-**STALE PRIOR**
+A recurring model mistake is to invent:
 
-> If the top-level object field is declared, arbitrary nested keys will simply work or be silently ignored.
-
-On `SCHEMAFULL` tables, object fields are schemafull by default. Nested fields must be declared, or the object-containing field must intentionally use `FLEXIBLE`.
-
-```surql
-DEFINE TABLE order SCHEMAFULL;
-DEFINE FIELD shipping ON order TYPE object;
-DEFINE FIELD shipping.city ON order TYPE string;
-DEFINE FIELD shipping.postal_code ON order TYPE string;
+```rust
+Surreal<SurrealKv>
 ```
 
-For arrays of objects:
+for application state.
 
-```surql
-DEFINE FIELD items ON order TYPE array<object>;
-DEFINE FIELD items.*.sku ON order TYPE string;
-DEFINE FIELD items.*.quantity ON order TYPE decimal;
+Across current embedded proving repositories the constructor uses `SurrealKv`, while the resulting handle is:
+
+```rust
+Surreal<Db>
 ```
 
-For intentionally open nested objects:
-
-```surql
-DEFINE FIELD metadata ON order TYPE object FLEXIBLE;
-```
-
-Current documentation explicitly notes that before 3.0, undefined nested fields could be omitted; as of 3.0 the write errors on the first undefined nested field.
-
-**Evidence:** VERIFIED API.
-
-Official source:
-- https://surrealdb.com/docs/reference/query-language/statements/define/field
+**CASE-STUDY EVIDENCE across Omphalos, Saturno, ARGOS, and DELPHIS.** Re-check on SDK upgrades.
 
 ---
 
-## 12. `.bind()` uses the SDK variable/value contract, not “anything Serde can serialize”
+## 11. SCHEMAFULL nested objects are strict in 3.x
 
 **STALE ASSUMPTION**
 
-> Any arbitrary `serde_json::Value` can be dropped into `.bind()` and will behave exactly like a native SDK value.
+> Declaring a top-level object permits arbitrary nested keys.
 
-Current `.bind()` accepts values through `IntoVariables`, including key-value pairs, `vars!`, `object!`, supported maps, and `SurrealValue`-compatible structs.
+Strict shape:
 
-```rust
-use surrealdb::types::{SurrealValue, vars};
-
-#[derive(SurrealValue)]
-struct Filters {
-    min_age: i64,
-}
-
-let result = db
-    .query("SELECT * FROM person WHERE age >= $min_age")
-    .bind(Filters { min_age: 18 })
-    .await?;
+```surql
+DEFINE TABLE order SCHEMAFULL;
+DEFINE FIELD shipping ON TABLE order TYPE object;
+DEFINE FIELD shipping.city ON TABLE order TYPE string;
 ```
 
-**Evidence:** VERIFIED API.
+Intentional dynamic shape:
 
-Official source:
-- https://surrealdb.com/docs/reference/rust/methods/query
+```surql
+DEFINE FIELD metadata ON TABLE order TYPE object FLEXIBLE;
+```
 
-For complex dynamic bindings, compile a tiny fixture first. See `surrealdb-3-query-shapes-and-sdk-binding.md`.
+Array of objects:
+
+```surql
+DEFINE FIELD items ON TABLE order TYPE array<object>;
+DEFINE FIELD items.*.sku ON TABLE order TYPE string;
+```
+
+Current docs explicitly note stricter 3.0 behavior for undefined nested fields.
+
+**VERIFIED API.**
 
 ---
 
-## 13. `RELATE ... SET` uses assignment syntax
+## 12. `NONE` and `NULL` are different
 
-**WRONG SHAPE**
+**STALE ASSUMPTION**
+
+> Missing and null are interchangeable.
+
+Current semantics:
+
+```surql
+SET field = NONE; -- remove/absence
+SET field = NULL; -- stored empty value
+```
+
+`TYPE string | NONE` is the optional-field form.
+
+**VERIFIED API.**
+
+Official source:
+- https://surrealdb.com/docs/reference/query-language/language-primitives/data-types/none-and-null
+
+### Rust/JSON trap
+
+`Option::None` serialized to ordinary JSON becomes JSON `null`, not SurrealQL `NONE`. DELPHIS treats this as an explicit adapter concern rather than assuming Serde expresses field absence.
+
+**CASE-STUDY EVIDENCE.**
+
+---
+
+## 13. `.bind()` is a typed SDK boundary
+
+Do not assume any arbitrary Serde/JSON value is automatically the same as a SurrealDB native value.
+
+Use the documented variable conversion path and test complex binding types with a tiny fixture before spreading them through a large backend.
+
+**VERIFIED API / GENERAL TESTING RULE.**
+
+See `surrealdb-3-query-shapes-and-sdk-binding.md`.
+
+---
+
+## 14. `RELATE ... SET` uses assignment syntax
+
+**WRONG**
 
 ```surql
 RELATE a->edge->b SET { strength: 5 };
 ```
 
-**CURRENT DOCUMENTED SHAPE**
+**CURRENT**
 
 ```surql
 RELATE a->edge->b SET strength = 5;
@@ -391,79 +319,202 @@ or:
 RELATE a->edge->b CONTENT { strength: 5 };
 ```
 
-**Evidence:** VERIFIED API.
-
-Official source:
-- https://surrealdb.com/docs/reference/query-language/statements/relate
+**VERIFIED API.**
 
 ---
 
-## 14. Transactions roll back on error / `THROW`
+## 15. Relation tables are first-class typed schema
 
-Do not implement multi-record all-or-nothing semantics with sequential application writes and hope cleanup succeeds.
-
-Current SurrealQL supports explicit transactions where an error or `THROW` rolls back the transaction.
+Current 3.x supports:
 
 ```surql
-BEGIN TRANSACTION;
-UPDATE account:one SET balance -= $amount;
-UPDATE account:two SET balance += $amount;
-IF account:one.balance < 0 { THROW "insufficient funds"; };
-COMMIT TRANSACTION;
+DEFINE TABLE works_at
+    TYPE RELATION FROM person TO company
+    SCHEMAFULL;
 ```
 
-**Evidence:** VERIFIED API.
+`IN person OUT company` is also valid.
+
+Do not reduce every relationship to a foreign-key-like scalar because the model remembers only relational SQL patterns.
+
+**VERIFIED API.**
 
 Official source:
-- https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions
-
-Failure-injection tests should prove rollback for the target materialization path.
+- https://surrealdb.com/docs/reference/query-language/statements/define/table
 
 ---
 
-## 15. Complex query shapes still require minimal real probes
+## 16. Full-text index syntax changed in 3.0
 
-Brew & Batch reported useful 3.2.4 observations involving:
+**STALE PRE-3.0**
 
-- bound record IDs using explicit `<record>$variable` casts in some dynamic queries;
-- materializing IDs with `LET $ids = SELECT VALUE id ...` before certain `FOR` loops;
-- projection/order combinations that required care in the tested query shape.
+```surql
+SEARCH ANALYZER app_text BM25
+```
 
-These are **CASE-STUDY EVIDENCE**, not yet universal SurrealDB API rules in this skill.
+**CURRENT 3.x**
 
-General rule:
+```surql
+FULLTEXT ANALYZER app_text BM25
+```
 
-> Fix known stale major-version priors first, then reduce complex query behavior to the smallest real probe against the exact version and engine before generalizing it.
+with functions such as:
+
+```surql
+search::score(1)
+search::rrf(...)
+```
+
+**VERIFIED API.**
+
+Official source:
+- https://surrealdb.com/docs/reference/query-language/functions/database-functions/search
 
 ---
 
-## 16. Version and architecture check before generation
+## 17. HNSW + BM25 + RRF hybrid search is current, not hypothetical
 
-Before producing SurrealDB code, an agent should answer:
+Current docs support:
+
+```surql
+DEFINE INDEX hnsw_embedding
+    ON TABLE chunk FIELDS embedding
+    HNSW DIMENSION 384 DIST COSINE;
+
+SELECT id, vector::distance::knn() AS distance
+FROM chunk
+WHERE embedding <|20,100|> $embedding;
+```
+
+and RRF fusion with lexical results.
+
+ARGOS implements the same general pattern on 3.2.3.
+
+**VERIFIED API + CASE-STUDY EVIDENCE.**
+
+See `surrealdb-3-graph-search-and-changefeeds.md`.
+
+---
+
+## 18. `CHANGEFEED` is not the same thing as time-travel `VERSION`
+
+A changefeed is an opt-in mutation log with retention:
+
+```surql
+DEFINE TABLE opportunity CHANGEFEED 30d;
+SHOW CHANGES FOR TABLE opportunity SINCE $cursor LIMIT 100;
+```
+
+A historical `SELECT ... VERSION ...` requires a versioning-enabled supported storage engine.
+
+Embedded SurrealKV current Rust setup:
+
+```rust
+let db = Surreal::new::<SurrealKv>(path).versioned().await?;
+```
+
+Do not teach:
+
+> "SurrealKV automatically makes every table bitemporal."
+
+**VERIFIED API.**
+
+---
+
+## 19. Transactions are all-or-nothing, but prove the actual path
+
+Sequential application `upsert().await?` calls are not a transaction.
+
+Current SurrealDB supports explicit transactions, and the Rust SDK also exposes a manual transaction API.
+
+Use failure injection to prove that a multi-record materialization leaves no partial state.
+
+**VERIFIED API / GENERAL TESTING RULE.**
+
+---
+
+## 20. Dynamic identifiers are not ordinary data bindings
+
+Bind values. When query syntax itself must be dynamic, use a strict grammar/allowlist before interpolation.
+
+ARGOS validates SurrealML model-name/version syntax before constructing a dynamic `ml::<name><version>(...)` function call.
+
+**CASE-STUDY EVIDENCE / GENERAL INJECTION-SAFETY RULE.**
+
+---
+
+## 21. Record display syntax is not automatically a canonical transport string
+
+ARGOS found text record IDs with UUID-shaped keys may be rendered with backtick delimiters when cast to string:
 
 ```text
-SDK/server/engine version?
-Rust toolchain version?
-Connection mode? remote WS/HTTP vs embedded?
-Persistence engine?
-Exact locked dependency version?
+document_envelope:`uuid-text-key`
+```
+
+while its transport contract used:
+
+```text
+document_envelope:uuid-text-key
+```
+
+Backticks are syntax/display delimiters in that case, not stored key characters. Centralize application record-text normalization or keep IDs typed.
+
+**CASE-STUDY EVIDENCE.**
+
+---
+
+## 22. Migration history should be explicit, not an immortal bootstrap string
+
+Multiple mature proving repos converged on:
+
+```text
+ordered append-only migrations
++ version table
++ deterministic migration identity
++ statement-error inspection
++ idempotence test
+```
+
+ARGOS additionally records a checksum of migration content.
+
+This is **CASE-STUDY EVIDENCE / GENERAL MIGRATION DISCIPLINE**, not a mandatory SurrealDB API.
+
+See `surrealdb-3-migrations-authority-and-rebuildability.md`.
+
+---
+
+## 23. Decide SurrealDB's authority role explicitly
+
+Both of these are valid:
+
+```text
+ARGOS:
+SurrealDB = operational authority
+```
+
+```text
+Alexandria:
+SurrealDB = rebuildable graph/context projection
+```
+
+Do not copy one architecture into the other accidentally. Authority/rebuildability is a system design decision, not a property imposed by SurrealDB.
+
+---
+
+## 24. Version/architecture preflight before generation
+
+Before producing SurrealDB code, answer:
+
+```text
+server/SDK version?
+Rust toolchain?
+remote or embedded?
+storage engine and features?
+versioning enabled?
 SCHEMAFULL or SCHEMALESS?
-Desktop/runtime framework if embedded?
+authoritative or projection store?
+Tauri/runtime path ownership if embedded?
+expected restart/rebuild proof?
 ```
 
-Current proving evidence spans two shapes:
-
-```text
-Astra:
-  SDK/server 3.2.4
-  remote WebSocket
-  SurrealKV server persistence
-  independently tested in restart/concurrency gates
-
-Brew & Batch:
-  SDK/engine 3.2.4
-  embedded SurrealKV inside a Tauri/local-first architecture
-  case-study evidence supplied from the target conversion
-```
-
-Do not collapse those architectures into one generic connection model.
+Exact version + deployment mode + authority contract + minimal real probe outrank remembered syntax.
