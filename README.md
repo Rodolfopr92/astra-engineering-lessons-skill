@@ -4,7 +4,7 @@ A versioned engineering skill for **correcting stale AI-model priors** in fast-m
 
 The repository began as lessons extracted from Astra, but its purpose is broader: give coding agents current, evidence-graded capability information when their training data strongly reflects older APIs or behavior.
 
-The deepest target remains **SurrealDB 3.2.4 + Rust**, now informed by several independent local-first, graph, search, projection, and operational-authority codebases.
+The deepest target remains **SurrealDB 3.2.4 + Rust**, informed by several independent local-first, graph, search, persistence, and transactional codebases.
 
 ## What this repository is
 
@@ -30,6 +30,8 @@ Source-of-truth order:
 4. This skill
 5. Model memory
 
+The repository is **not** an architecture planner. It should correct what a technology can do and how its current API behaves. Project-level choices such as system-of-record ownership, multi-store topology, or whether a projection architecture is appropriate belong in that project's planning and ADRs.
+
 ## Current baseline
 
 | Component | Verified baseline |
@@ -40,7 +42,7 @@ Source-of-truth order:
 | Tauri capability coverage | 2.x path/runtime APIs |
 | Last verification pass | 2026-09-12 |
 
-Current coverage now includes much more than basic CRUD:
+Current coverage includes much more than basic CRUD:
 
 - `RecordId`, `SurrealValue`, `type::record()` and 3.x type boundaries;
 - remote and embedded SurrealKV architectures;
@@ -51,8 +53,8 @@ Current coverage now includes much more than basic CRUD:
 - BM25 full-text, HNSW vector search, KNN distance and RRF hybrid search;
 - changefeeds versus versioned-storage time travel;
 - transactions, migration ledgers, checksums and schema idempotence;
-- SurrealDB as either operational authority or rebuildable projection;
-- process-separated SurrealKV restart/stress testing.
+- process-separated SurrealKV restart/stress testing;
+- recovery/rebuild claims matched to executable evidence.
 
 ## Repository structure
 
@@ -67,7 +69,7 @@ Current coverage now includes much more than basic CRUD:
     ├── embedded-surrealkv-tauri-local-first.md
     ├── surrealdb-3-query-shapes-and-sdk-binding.md
     ├── surrealdb-3-graph-search-and-changefeeds.md
-    ├── surrealdb-3-migrations-authority-and-rebuildability.md
+    ├── surrealdb-3-migrations-and-recovery-evidence.md
     ├── verification-status.md
     ├── subprocess-sandbox-and-path-containment.md
     ├── multi-agent-clobbering-and-concurrency.md
@@ -91,19 +93,19 @@ This prevents a common agent failure cascade where a project workaround or roadm
 
 ## Proving repositories
 
-The SurrealDB knowledge is now cross-pollinated from several different architectures:
+The SurrealDB knowledge is cross-pollinated from several different technical environments:
 
-| Repository | SurrealDB role | Reusable evidence |
-|---|---|---|
-| Astra-bot | remote operational store | RecordId failures, atomic checkpoints, restart persistence, tenant isolation |
-| Brew & Batch | embedded Tauri/local-first | SCHEMAFULL fresh-install failures, SDK query/binding probes, schema parity |
-| Omphalos-git | embedded graph/intelligence tier | boot/readiness, versioned schema, graph/agent-memory design |
-| Saturno | embedded graph/runtime tier | `Surreal<Db>` handle shape, migration idempotence |
-| Alexandria | rebuildable graph/context projection | outbox, revision/hash identity, projection checkpoints, wipe/rebuild model |
-| ARGOS | SurrealDB operational authority | relation graphs, events, changefeeds, BM25/HNSW/RRF, transactions, checksummed migrations, restart/stress |
-| DELPHIS | embedded local runtime store | `take_errors()`, NONE/null adapter semantics, native Value→Serde boundary, process-separated restart |
+| Repository | Reusable technical evidence |
+|---|---|
+| Astra-bot | RecordId failures, atomic checkpoints, restart persistence, tenant-isolation tests |
+| Brew & Batch | embedded Tauri/SurrealKV, SCHEMAFULL fresh-install failures, SDK query/binding probes, schema parity |
+| Omphalos-git | embedded boot/readiness, versioned schema runner, relation/agent-memory schema examples |
+| Saturno | `Surreal<Db>` handle shape, migration idempotence |
+| Alexandria | revision/hash/checkpoint schema patterns and fresh-install validation evidence |
+| ARGOS | relation graphs, events, changefeeds, BM25/HNSW/RRF, transactions, checksummed migrations, restart/stress |
+| DELPHIS | `take_errors()`, NONE/null adapter semantics, native Value→Serde boundary, process-separated restart |
 
-The skill deliberately does **not** force one authority model. ARGOS and Alexandria are both useful precisely because they make opposite, explicit choices.
+These repositories are evidence sources, not templates that the skill tells another project to copy wholesale.
 
 ## Example: project incident → general capability
 
@@ -116,19 +118,20 @@ intrinsic id is RecordId, not String
 ```
 
 ```text
-ARGOS/Alexandria contrast:
-SurrealDB authority vs rebuildable SurrealDB projection
-      ↓
-general correction:
-decide authority/recovery semantics before schema design
-```
-
-```text
 DELPHIS boundary:
 Option::None → JSON null while storage wanted absence
       ↓
 general correction:
 NONE, NULL and JSON null are distinct contracts
+```
+
+```text
+ARGOS search implementation:
+BM25 + HNSW + RRF on current SurrealDB
+      ↓
+general correction:
+modern SurrealDB supports this search surface;
+verify exact version/query syntax before generating it
 ```
 
 ## Installation in Antigravity
@@ -146,14 +149,16 @@ When a model generates suspicious code for a fast-moving dependency:
 
 1. Identify the likely stale prior.
 2. Check exact dependency/server/engine version.
-3. Establish connection/storage/authority mode.
+3. Establish connection/storage mode where relevant.
 4. Verify current official documentation.
 5. Reproduce with the smallest real compile/runtime test possible.
 6. Fix the consuming project.
 7. Add a regression test.
-8. Generalize using `references/capability-update-template.md`.
+8. Generalize the **technical correction** using `references/capability-update-template.md`.
 
 If a finding comes from another proving repository but has not been independently minimized, label it **CASE-STUDY EVIDENCE** first.
+
+If a finding is mainly “which architecture should this project choose?”, keep it in the project plan/ADR rather than this capability repository.
 
 Do not add claims merely because an AI assistant stated them confidently.
 
