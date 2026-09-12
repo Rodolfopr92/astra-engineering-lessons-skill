@@ -48,9 +48,17 @@ SurrealDB Rust SDK: 3.2.4
 result: 5 passed, 0 failed
 ```
 
-This history is kept deliberately. A failed reproducer that exposes a bad test is useful evidence about the test harness, but it does not falsify the underlying capability claim.
+The workflow was then hardened to commit-pinned `actions/checkout` v7.0.1 with read-only contents permission. The complete suite passed again:
 
-The workflow `.github/workflows/reproducers.yml` runs on a standard public-repository runner. It uses a commit-pinned `actions/checkout` release and grants only `contents: read`. Public standard GitHub-hosted runners are currently free.
+```text
+GitHub Actions run: 34691656259
+workflow head: c91d41d938a6e643da69072700dcb40e1baf857e
+result: 5 passed, 0 failed
+```
+
+This history is kept deliberately. A failed reproducer that exposes a bad test is useful evidence about the harness, but it does not falsify the underlying capability claim.
+
+The workflow `.github/workflows/reproducers.yml` runs on a standard public-repository runner. Public standard GitHub-hosted runners are currently free.
 
 ## Cross-version rule
 
