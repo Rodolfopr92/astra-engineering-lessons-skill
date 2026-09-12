@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-09-12
 
-This file prevents a capability skill from turning roadmap prose, project conventions, or case-study observations into universal facts.
+This file prevents a capability skill from turning roadmap prose, project conventions, architecture choices, or case-study observations into universal facts.
 
 ## Evidence classes
 
@@ -12,6 +12,8 @@ This file prevents a capability skill from turning roadmap prose, project conven
 - **PROJECT CONVENTION** — a design choice; portable only when the same tradeoff applies.
 - **ARCHITECTURAL INTENT** — planned/recommended, not implementation evidence.
 - **NOT A GENERAL RULE / FALSE** — explicitly prevents over-generalization.
+
+Architecture planning is out of scope for this ledger except where needed to mark a claim as non-universal.
 
 ---
 
@@ -123,7 +125,7 @@ Official references:
 
 ---
 
-## Migrations / authority / rebuildability
+## Migrations / recovery evidence
 
 | Claim | Status | Evidence |
 |---|---|---|
@@ -131,10 +133,10 @@ Official references:
 | Deterministic migration record IDs improve idempotence | CASE-STUDY EVIDENCE | ARGOS, Omphalos/Saturno |
 | Recording migration-body checksums improves schema identity evidence | CASE-STUDY EVIDENCE | ARGOS |
 | Same-handle migration idempotence and process-restart durability are different claims | GENERAL TESTING RULE | Saturno vs ARGOS/DELPHIS |
-| SurrealDB must always be the system of record | FALSE | ARGOS uses authority; Alexandria uses derived projection |
-| SurrealDB must always be rebuildable/derived | FALSE | Architecture-dependent |
-| Idempotent outbox + revision/hash/checkpoint is a useful projection pattern | CASE-STUDY EVIDENCE | Alexandria |
-| Omphalos reconstruction invariant is fully implemented and proven | ARCHITECTURAL INTENT / PARTIAL | Rebuild file still contains TODO stages |
+| A documented recovery/rebuild design alone proves recovery works | FALSE | Execution evidence required |
+| Recovery/rebuild tests should verify the same state properties claimed by the application | GENERAL TESTING RULE | Evidence discipline |
+
+Choosing whether SurrealDB is authoritative, derived, one store among several, or paired with an outbox is **not a capability claim** and belongs in project architecture/planning rather than this ledger.
 
 ---
 
@@ -190,13 +192,13 @@ Official references:
 
 ### High-value SurrealDB evidence
 
-- **Astra-bot** — remote WS + SurrealKV, tenant isolation, document ingest, concurrency/restart, NF-e parser.
+- **Astra-bot** — remote WS + SurrealKV, tenant-isolation tests, document ingest, concurrency/restart, NF-e parser.
 - **DLF merchanting operations** — Kaiju staged-ingest / Bronze patterns, tracked separately from this scan.
 - **Brew & Batch** — external Tauri + embedded SurrealKV + SCHEMAFULL/query-shape case study.
 - **Omphalos-git** — embedded boot/readiness, versioned schema, graph and agent-memory schema.
 - **Saturno** — second embedded implementation, `Surreal<Db>` handle shape, schema-idempotence tests.
-- **Alexandria** — SurrealDB as idempotent/rebuildable graph projection with revision/hash/checkpoints.
-- **argos-commercial-operations** — SurrealDB as operational authority; graph, events, changefeeds, BM25/HNSW/RRF, transactions, checksummed migrations, restart/stress evidence.
+- **Alexandria** — revision/hash/checkpoint schema patterns and fresh-install validation evidence.
+- **argos-commercial-operations** — graph, events, changefeeds, BM25/HNSW/RRF, transactions, checksummed migrations, restart/stress evidence.
 - **delphis-intelligence-studio** — embedded adapter boundary, `take_errors()`, NONE/null handling, Value→JSON→Serde bridge, process-separated restart/stress.
 
 ### No new SurrealDB capability evidence found on indexed/default branches
@@ -247,4 +249,4 @@ VERIFIED API for 3.2.4
   → VERIFIED API for new baseline
 ```
 
-Never preserve an old version claim simply because the old example still looks plausible.
+Never preserve an old version claim simply because the old example still looks plausible. And do not promote project architecture decisions into technology-capability corrections.
