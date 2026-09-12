@@ -1,80 +1,214 @@
-# Multi-Agent Coordination, Clobbering & Concurrency
+# Multi-Agent Coordination, File Clobbering & Concurrency
 
-## 1. The Multi-Agent Clobbering Incident
+This reference turns a real shared-worktree failure into portable rules for coding agents.
 
-### The Event
-During development, two AI models (Claude and Antigravity) were asked to work on Astra's codebase around the same time. 
-
-Claude inspected the tree, worked out SurrealQL queries via `curl`, and applied edits to `ingest/repository.rs`. Twelve seconds later, Antigravity wrote files back to disk without verifying the filesystem's modification time (`mtime`) or git working tree status. Antigravity's write completely overwritten Claude's edits without realizing it, reverting the bug fixes and leaving the repository in a broken state.
-
-When reviewing the code later, Claude reported that several critical fixes had vanished, mistakenly believing they were never implemented.
-
-### Root Causes
-1. **Blind Overwrites Without `mtime` Verification**:
-   Writing an entire file back without checking whether the file on disk has changed since it was read.
-2. **Lack of Agent State Synchronization**:
-   Multiple agents operating on the same worktree simultaneously without branch isolation or git lock guards.
-3. **Optimistic False Assumptions**:
-   Assuming that "nothing else is writing to the disk right now."
-
-### Defensive Rules for Multi-Agent Pairing
-1. **Always Check Git Status Before & After**:
-   Before modifying any file, inspect `git status` or file modification timestamp. If an unexpected diff exists, stop and rebase/re-read immediately.
-2. **Use Targeted Line-Range Replacements**:
-   Instead of rewriting full files from memory (which wipes out concurrent edits in other sections), use contiguous block replacements (`replace_file_content`) anchored to exact matching target lines.
-3. **Branch Isolation**:
-   When dispatching subagents or delegating tasks to external assistants, assign each agent its own git branch or worktree (`git worktree add`). Merge only through PRs with automated CI checks.
+The important lesson is not which agents were involved. It is that **filesystem writes are concurrent state mutations**, and agent tooling often treats them as if only one writer exists.
 
 ---
 
-## 2. Concurrency & TOCTOU in Database State
+## 1. General Failure Mode: Read → Think → Blind Full-File Write
 
-### The Preflight Check Trap
-In multi-tenant systems, a common pattern is:
+A common agent loop is:
+
+```text
+read file at state A
+→ reason for several seconds/minutes
+→ another actor changes file to state B
+→ first agent writes its remembered full file A′
+→ state B is silently lost
+```
+
+This is an optimistic-concurrency failure.
+
+It can occur between:
+
+- two AI coding agents;
+- an AI agent and a human editor;
+- an IDE formatter/code action and an agent;
+- two automation jobs sharing a checkout.
+
+---
+
+## 2. Case Study: Astra Shared-Worktree Clobbering
+
+During Astra development, one agent prepared changes to `ingest/repository.rs`. Another agent later wrote its own previously-read file state back without first re-reading the current worktree. The later write removed valid changes.
+
+The consequences were especially confusing because:
+
+1. prose/commit planning still described the intended fixes;
+2. local reasoning assumed those fixes existed;
+3. repository inspection later showed they were absent;
+4. the documentation then temporarily drifted ahead of the code.
+
+This produced a second-order lesson:
+
+> Concurrency bugs do not only corrupt code. They can corrupt the project's shared belief about what code exists.
+
+---
+
+## 3. Defensive File-Edit Protocol
+
+Before modifying an existing file:
+
+```text
+1. read current file
+2. inspect git status/diff
+3. capture current blob/file identity when the tool supports it
+4. compute targeted change
+5. immediately before write, ensure the source state is still current
+6. apply the smallest practical replacement
+7. inspect diff after write
+```
+
+### Prefer optimistic write guards
+
+Good write APIs require the old content hash/blob SHA/version:
+
+```text
+update(path, expected_sha, new_content)
+```
+
+If the file changed since it was read, the write fails instead of overwriting newer work.
+
+GitHub's Contents API, for example, uses the current blob SHA for updates. This is safer than an unconditional overwrite.
+
+### `mtime` is a signal, not a transaction
+
+Modification time checks can detect some concurrent edits but are not a complete concurrency-control mechanism. Timestamp granularity, clock behavior, and tools that preserve timestamps can defeat simplistic `mtime` assumptions.
+
+Prefer content hashes, git object IDs, or tool-provided version tokens when available.
+
+---
+
+## 4. Use Targeted Changes Where Possible
+
+Replacing a small anchored block reduces the blast radius compared with reconstructing an entire file from a stale in-memory copy.
+
+But targeted edits are not a substitute for version checking. If the target block itself changed, fail and re-read rather than guessing.
+
+---
+
+## 5. Strong Isolation: Branches and Worktrees
+
+For substantial concurrent work:
+
+```bash
+git worktree add ../task-a -b agent/task-a
+git worktree add ../task-b -b agent/task-b
+```
+
+Each worker gets an independent filesystem tree and branch.
+
+Merge through normal version-control mechanisms where conflicts are visible and CI can validate the combined state.
+
+This is stronger than coordinating multiple writers in one worktree through convention alone.
+
+---
+
+## 6. Database TOCTOU Is the Same Shape of Bug
+
+The same read-then-write race appears in persistence code:
+
 ```rust
-// ❌ TOCTOU Vulnerability:
-let existing = db.select(("company", slug)).await?;
+let existing = lookup_by_unique_key(db, key).await?;
 if existing.is_none() {
-    // A concurrent thread creates the company right here!
-    db.create(("company", slug)).content(company).await?;
+    create_record(db, key).await?;
 }
 ```
-Between the `SELECT` and the `CREATE`, a concurrent request with the same company slug can slip in, causing race conditions, split-brain silo provisioning, or runtime errors.
 
-### The Solution: Deterministic Atomic Creation
-Rely on atomic constraints enforced by the storage engine:
-```rust
-// ✅ CORRECT:
-// Ensure UNIQUE index exists on company slug
-let created: Option<CompanyTenant> = master_db
-    .create(("company", slug.clone()))
-    .content(company.clone())
-    .await
-    .map_err(|error| {
-        format!("company '{slug}' could not be created atomically (already exists): {error}")
-    })?;
+Two requests can both observe absence before either writes.
 
-if created.is_none() {
-    return Err(format!("company '{slug}' was not created"));
-}
+The durable identity rule should live in the storage engine:
+
+```surql
+DEFINE INDEX OVERWRITE idx_source_hash
+ON TABLE document_artifact COLUMNS source_hash UNIQUE;
 ```
-If two requests race to create `acme`, the database's unique constraint atomically rejects the second request without any TOCTOU window.
+
+Then application code treats a constraint conflict as a real concurrent outcome rather than assuming the preflight check guaranteed uniqueness.
+
+General principle:
+
+> If correctness depends on uniqueness or atomicity, enforce it at the layer that serializes the competing writes.
 
 ---
 
-## 3. Case-Insensitive Filesystems & Content Addressing
+## 7. Counters: Avoid Application Read-Modify-Write
 
-A subtle multi-platform concurrency hazard exists when dealing with SHA-256 hashes on Windows/macOS vs. Linux:
-- Linux filesystems (ext4) are case-sensitive: `E3B0...` and `e3b0...` are two different directories.
-- Windows (NTFS) and macOS (APFS) are case-insensitive by default: `E3B0...` and `e3b0...` resolve to the same folder on disk.
+Similarly:
 
-If an intake handler or agent does not strictly normalize hashes to lowercase ASCII hex before constructing blob paths:
-```rust
-// ❌ HAZARDOUS
-let path = base_dir.join(&hash[0..2]).join(&hash[2..4]).join(hash);
-
-// ✅ SAFE & CANONICAL
-let lower_hash = hash.to_ascii_lowercase();
-let path = base_dir.join(&lower_hash[0..2]).join(&lower_hash[2..4]).join(&lower_hash);
+```text
+read counter = 10
+worker A computes 11
+worker B computes 11
+A writes 11
+B writes 11
 ```
-Un-normalized hashing leads to path duplication, cache misses, and potential replay bypasses.
+
+Two events produced one increment.
+
+Prefer a single server-side atomic mutation and test it under actual concurrency.
+
+For the SurrealDB 3.2.4 example, see `surrealdb-3-contract-and-pitfalls.md`.
+
+---
+
+## 8. Canonicalization Across Case-Insensitive Filesystems
+
+Content-addressed storage should have one canonical textual representation for a digest.
+
+For SHA-256 hex strings:
+
+```rust
+let hash = input.trim().to_ascii_lowercase();
+```
+
+then validate exactly 64 ASCII hexadecimal characters before using it in a path.
+
+Without canonicalization, the same digest can be represented differently (`ABC...` vs `abc...`), leading to inconsistent paths/caches across case-sensitive and case-insensitive filesystems.
+
+The general rule is broader than filesystems:
+
+> Normalize identifiers once at the boundary, then use the canonical form for identity comparisons and storage.
+
+---
+
+## 9. Handoff Reports Are Not Repository State
+
+Agent reports commonly say:
+
+```text
+implemented X
+fixed Y
+all gates green
+```
+
+Treat those as claims to verify.
+
+For code state, prefer:
+
+```text
+exact repository
+branch
+head SHA
+actual diff/file contents
+exact CI run attached to that SHA
+```
+
+This rule exists because prose survived one Astra clobbering incident even when the code it described did not.
+
+---
+
+## 10. Minimum Multi-Agent Safety Checklist
+
+Before parallel agents edit one codebase:
+
+```text
+[ ] separate branch/worktree where practical
+[ ] no blind full-file overwrites
+[ ] expected SHA/version guard on remote writes
+[ ] git status/diff before and after edits
+[ ] re-read on conflict
+[ ] exact-SHA CI evidence before merge
+[ ] handoff claims verified against repository state
+```
