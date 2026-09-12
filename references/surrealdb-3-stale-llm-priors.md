@@ -10,7 +10,7 @@ This document is a fast correction layer for AI coding agents whose internal kno
 - **VERIFIED API** — current official SurrealDB documentation / SDK API.
 - **TESTED BEHAVIOR** — independently reproduced against the named version.
 - **CASE-STUDY EVIDENCE** — observed in a real proving repository but not independently reduced by this skill repository.
-- **PROJECT CONVENTION** — application architecture, not a SurrealDB requirement.
+- **PROJECT CONVENTION** — application design, not a SurrealDB requirement.
 
 ---
 
@@ -479,31 +479,13 @@ ARGOS additionally records a checksum of migration content.
 
 This is **CASE-STUDY EVIDENCE / GENERAL MIGRATION DISCIPLINE**, not a mandatory SurrealDB API.
 
-See `surrealdb-3-migrations-authority-and-rebuildability.md`.
+See `surrealdb-3-migrations-and-recovery-evidence.md`.
 
 ---
 
-## 23. Decide SurrealDB's authority role explicitly
+## 23. Version/deployment preflight before generation
 
-Both of these are valid:
-
-```text
-ARGOS:
-SurrealDB = operational authority
-```
-
-```text
-Alexandria:
-SurrealDB = rebuildable graph/context projection
-```
-
-Do not copy one architecture into the other accidentally. Authority/rebuildability is a system design decision, not a property imposed by SurrealDB.
-
----
-
-## 24. Version/architecture preflight before generation
-
-Before producing SurrealDB code, answer:
+Before producing SurrealDB code, answer the technical questions that materially change generated code:
 
 ```text
 server/SDK version?
@@ -512,9 +494,10 @@ remote or embedded?
 storage engine and features?
 versioning enabled?
 SCHEMAFULL or SCHEMALESS?
-authoritative or projection store?
 Tauri/runtime path ownership if embedded?
-expected restart/rebuild proof?
+what persistence/restart claim must be proven?
 ```
 
-Exact version + deployment mode + authority contract + minimal real probe outrank remembered syntax.
+Do **not** turn this capability preflight into project architecture planning. Questions such as whether SurrealDB should be authoritative, derived, one store among several, or paired with an outbox belong in the project's architecture work.
+
+Exact version + deployment mode + minimal real probe outrank remembered syntax.
