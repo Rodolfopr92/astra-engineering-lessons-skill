@@ -15,7 +15,7 @@ Its job is technical: correct stale model knowledge about what the current stack
 - SurrealDB Rust SDK: **3.2.4**
 - Rust proving baseline: **1.96**
 - Official SDK minimum Rust version: **1.89**
-- Tauri capability coverage: **2.x current path/runtime APIs**
+- Tauri documentation baseline: **2.11.5** (`PathResolver` application-data APIs)
 - Last full verification pass: **2026-09-12**
 - Routine reverification interval: **90 days maximum**
 
@@ -25,9 +25,9 @@ This rule overrides every example in this skill.
 
 Before applying a version-sensitive claim, inspect the target repository's lockfile/manifests and identify the actual SurrealDB server/engine, Rust SDK, Rust toolchain, connection mode, and Tauri version where relevant.
 
-If the target uses a SurrealDB server/engine or Rust SDK version **other than 3.2.4**:
+If the target uses a SurrealDB server/engine or Rust SDK version **other than 3.2.4**, or a Tauri-sensitive claim targets a Tauri version **other than 2.11.5**:
 
-1. Treat every version-sensitive `VERIFIED API` or `TESTED BEHAVIOR` claim here as **UNVERIFIED FOR THE TARGET VERSION**.
+1. Treat the affected version-sensitive `VERIFIED API` or `TESTED BEHAVIOR` claims here as **UNVERIFIED FOR THE TARGET VERSION**.
 2. Re-check official documentation for the target version.
 3. Run the relevant reproducer when one exists.
 4. State the baseline mismatch before relying on the skill's version-sensitive guidance.
@@ -214,18 +214,18 @@ Official: https://surrealdb.com/docs/reference/rust/methods/new
 
 Sequential application writes are not one all-or-nothing database transaction. When the required invariant is atomic multi-record mutation, use a real transaction and prove rollback with failure injection.
 
-## 5. Tauri 2 path contract
+## 5. Tauri 2.11.5 path contract
 
-Current Tauri 2 exposes application-scoped path APIs including:
+Tauri 2.11.5 exposes application-scoped path APIs including:
 
 ```rust
 let data = app.path().app_data_dir()?;
 let local = app.path().app_local_data_dir()?;
 ```
 
-The APIs are current; choosing AppData vs AppLocalData for a specific product is a project/platform decision.
+`app_data_dir()` resolves to the platform data directory plus the app bundle identifier, while `app_local_data_dir()` resolves to the platform local-data directory plus that identifier. Choosing between them for a product is a project/platform decision.
 
-Official: https://docs.rs/tauri/latest/tauri/path/struct.PathResolver.html
+Official: https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html
 
 ## 6. General technical rules
 
