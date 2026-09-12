@@ -1,14 +1,16 @@
 # Embedded SurrealKV + Tauri / Local-First Applications
 
-**Primary baseline:** SurrealDB Rust SDK 3.2.4, SurrealKV embedded storage, Tauri 2.x  
+**Primary baseline:** SurrealDB Rust SDK 3.2.4, SurrealKV embedded storage, Tauri 2.11.5 path APIs  
 **Case-study baselines:** Brew & Batch, Omphalos, Saturno, ARGOS, DELPHIS  
 **Last verified:** 2026-09-12
 
 This reference corrects a common AI failure mode: treating every SurrealDB application as a remote HTTP/WebSocket client. Desktop and local-first Rust applications can embed SurrealDB directly in-process and persist through SurrealKV without running a separate database server.
 
+If the target SurrealDB/Rust SDK differs from 3.2.4, or a Tauri path claim targets a version other than 2.11.5, treat the affected version-sensitive claim as unverified for that target until rechecked.
+
 ## Evidence labels
 
-- **VERIFIED API** — current official SurrealDB/Tauri documentation.
+- **VERIFIED API** — current official SurrealDB/Tauri documentation for the named baseline.
 - **CASE-STUDY EVIDENCE** — exercised in a proving repository but not independently reduced by this skill repository as a standalone fixture yet.
 - **PROJECT CONVENTION** — a design choice, not required by the technology.
 
@@ -16,7 +18,7 @@ This reference corrects a common AI failure mode: treating every SurrealDB appli
 
 ## 1. Preflight: establish the connection model before writing code
 
-Before generating SurrealDB code, answer all of these:
+Before generating SurrealDB code, establish:
 
 ```text
 SurrealDB SDK version?
@@ -29,7 +31,7 @@ Versioned storage required?
 Does the app need a separate SurrealDB server process?
 ```
 
-For an embedded SurrealKV desktop application:
+For an embedded SurrealKV desktop application, the supported technical shape is:
 
 ```text
 Tauri process
@@ -38,7 +40,7 @@ SurrealDB Rust SDK
    ↓
 embedded SurrealKV
    ↓
-application data directory
+application-owned persistent directory
 ```
 
 No HTTP or WebSocket database server is inherently required.
@@ -47,6 +49,7 @@ No HTTP or WebSocket database server is inherently required.
 
 Official sources:
 - https://surrealdb.com/docs/reference/rust
+- https://surrealdb.com/docs/reference/rust/embedding
 - https://surrealdb.com/docs/reference/rust/methods/new
 
 ---
@@ -69,67 +72,62 @@ db.use_ns("app").use_db("main").await?;
 
 `SurrealKv` selects the embedded engine for `new::<...>()`; the resulting embedded client handle is typed as `Surreal<Db>`.
 
-**CASE-STUDY EVIDENCE strongly corroborated across multiple 3.x repositories.** Verify against the exact locked SDK when upgrading.
+**CASE-STUDY EVIDENCE**, now also covered by the pinned 3.2.4 reproducer suite. Do not promote it to a different SDK version without recompiling there.
 
 ### Feature selection
 
-For SurrealKV, ensure the chosen crate version enables the corresponding embedded storage feature (`kv-surrealkv` in the current 3.2.4 crate).
+For SurrealKV, ensure the chosen crate version enables the corresponding embedded storage feature (`kv-surrealkv` in 3.2.4).
 
 **VERIFIED API.**
 
+Official source:
+- https://docs.rs/crate/surrealdb/3.2.4
+
 ---
 
-## 3. Opening the engine is not the whole boot contract
+## 3. Opening the engine is not the whole boot observation
 
-A useful embedded boot sequence is:
+A useful diagnostic sequence is:
 
 ```text
 resolve stable path
 → create parent directory
 → open SurrealKV
 → select namespace/database
-→ apply/verify migrations
-→ run trivial readiness query
-→ expose managed state
+→ apply/verify schema or migrations if the app has them
+→ run a trivial readiness query
+→ expose the initialized handle
 ```
 
-Omphalos explicitly performs a post-`use_ns/use_db` readiness probe (`RETURN 1`) and records runtime metadata including path, namespace, database, schema version, engine, status, and open latency.
+Omphalos uses a post-`use_ns/use_db` readiness probe (`RETURN 1`) and records runtime metadata including path, namespace, database, schema version, engine, status, and open latency.
 
-This is a **CASE-STUDY PATTERN**, not a SurrealDB requirement, but it creates much better diagnostics than treating “constructor returned Ok” as full application readiness.
+This is **CASE-STUDY EVIDENCE**, not a requirement imposed by SurrealDB or Tauri.
 
 ---
 
-## 4. Tauri persistent database paths belong under an app-specific data directory
+## 4. Tauri 2.11.5 application-scoped paths
 
-Do not persist a production desktop database relative to the process working directory.
-
-Tauri 2 exposes application-scoped paths through `PathResolver`:
+Tauri 2.11.5 `PathResolver` exposes:
 
 ```rust
 let app_data = app.path().app_data_dir()?;
-let database_path = app_data.join("database");
-std::fs::create_dir_all(&database_path)?;
+let app_local_data = app.path().app_local_data_dir()?;
 ```
 
-`app_data_dir()` resolves to a platform data directory scoped by application identity.
+`app_data_dir()` resolves to the platform data directory plus the configured bundle identifier. `app_local_data_dir()` resolves to the platform local-data directory plus that identifier.
 
 **VERIFIED API.**
 
-Official sources:
-- https://docs.rs/tauri/latest/tauri/path/struct.PathResolver.html
-- https://v2.tauri.app/reference/javascript/api/namespacepath/
+Official source:
+- https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html
 
-### AppData vs AppLocalData
-
-Tauri exposes both application data and local-data locations. Which one should contain the database is an application/platform decision.
-
-**PROJECT CONVENTION.**
+Choosing which of those locations should hold a particular application's database is a project/platform decision, not a Tauri capability rule.
 
 ---
 
 ## 5. Persistence evidence should cross a real lifecycle boundary
 
-Embedded mode removes the external database daemon, but it does **not** remove the need for persistence tests.
+Embedded mode removes the external database daemon, but it does not remove the need for persistence evidence.
 
 A basic reopen test is:
 
@@ -141,7 +139,7 @@ open fixed directory
 → read records
 ```
 
-For stronger evidence, prefer a **process-separated restart test**:
+For stronger evidence, use a process-separated restart test:
 
 ```text
 writer process
@@ -152,18 +150,16 @@ writer process
 reader process
 → opens the same directory
 → reads state
-→ verifies relationships / migration state / counts
+→ verifies the claimed persisted properties
 ```
 
-ARGOS and DELPHIS use separate test processes because embedded-engine shutdown can involve internal asynchronous lifecycle work; a same-process drop-and-immediate-reopen can accidentally test handle timing rather than crash/restart durability.
+ARGOS and DELPHIS use separate test processes because embedded-engine shutdown can involve internal asynchronous lifecycle work; a same-process drop-and-immediate-reopen can accidentally test handle timing rather than a full process boundary.
 
 **CASE-STUDY EVIDENCE / GENERAL TESTING RULE.**
 
 ### Do not conflate schema idempotence with restart persistence
 
-Saturno tests re-running its migration routine through a live handle and verifies migration rows remain `[1,2,3,4]`. That proves **migration idempotence**, not process restart persistence.
-
-Use the right test for the claim.
+Saturno tests re-running its migration routine through a live handle without duplicate migration rows. That proves migration idempotence, not process restart persistence.
 
 ---
 
@@ -171,7 +167,7 @@ Use the right test for the claim.
 
 Do not assume that choosing SurrealKV automatically enables historical `VERSION` queries.
 
-Current Rust SDK documentation exposes an explicit versioned embedded connection:
+Current 3.2.4 Rust SDK documentation exposes an explicit versioned embedded connection:
 
 ```rust
 let db = Surreal::new::<SurrealKv>("path/to/database")
@@ -179,15 +175,11 @@ let db = Surreal::new::<SurrealKv>("path/to/database")
     .await?;
 ```
 
-Current deployment documentation likewise exposes `versioned=true` configuration for supported engines.
-
 **VERIFIED API.**
 
 Official sources:
 - https://surrealdb.com/docs/reference/rust/methods/new
 - https://surrealdb.com/docs/reference/query-language/statements/select
-
-This corrects an older proving-project assumption that SurrealKV and time-travel history were automatically synonymous.
 
 ---
 
@@ -222,51 +214,22 @@ Current documentation notes that as of 3.0, undefined nested fields on schemaful
 
 **VERIFIED API.**
 
-Official sources:
+Official source:
 - https://surrealdb.com/docs/reference/query-language/statements/define/field
-- https://surrealdb.com/docs/reference/query-language/statements/define/table
 
-### Fresh-install rule
+### Fresh-install testing implication
 
-Validate authoritative seeds/reference bundles against an empty database built from the canonical schema. Upgrading a long-lived developer database can hide missing nested definitions.
+If an application ships authoritative seed/reference data with nested objects, a fresh database built from the exact schema is stronger evidence than merely reapplying definitions over a long-lived developer database.
 
-This failure mode appeared independently in Brew & Batch and Alexandria-related validation work.
-
-**CASE-STUDY EVIDENCE / GENERAL TESTING RULE.**
+**GENERAL TESTING RULE**, supported by case-study failures in Brew & Batch.
 
 ---
 
-## 8. Separate schema state, reference overlays, projection state, and business history
+## 8. Canonical schema-copy parity
 
-These are different ledgers:
+If the same schema bundle is intentionally mirrored in two technical locations, drift can be detected mechanically by hashing the canonical scripts in deterministic order.
 
-```text
-schema/module installation state
-projection/rebuild checkpoint state
-optional reference/cache overlay state
-transactional business/history state
-```
-
-An optional overlay may have its own replay marker:
-
-```text
-version
-name
-checksum
-applied_at
-```
-
-A graph projector may have a separate `(target, aggregate, revision/event)` checkpoint. Do not overload the schema migration version to answer all of these questions.
-
-**GENERAL ARCHITECTURAL PATTERN.**
-
----
-
-## 9. Canonical schema bundle parity
-
-When authoritative schema exists in one location and an application carries a copy, detect drift mechanically.
-
-A useful non-circular strategy:
+A non-circular approach is:
 
 ```text
 for canonical scripts in deterministic order:
@@ -275,30 +238,27 @@ combine (script name + raw-byte hash)
 hash combined material
 ```
 
-Do not make the checksum depend on a manifest that embeds its own checksum.
+Do not make a checksum depend on a manifest that embeds its own checksum.
 
-Use schema identity in diagnostics/build/seed metadata where it improves traceability.
-
-**GENERAL REPRODUCIBILITY PATTERN**, supported by Brew & Batch and migration-ledger patterns in ARGOS.
+This is a reproducibility technique, not a requirement of SurrealDB or Tauri.
 
 ---
 
-## 10. Scope limits
+## 9. Scope limits
 
 This reference does not claim:
 
 - every Tauri app should use SurrealKV;
 - SurrealKV is the preferred storage engine for every production workload;
-- app data is always preferable to app local data;
-- an embedded architecture has the same operational surface as every remote deployment;
-- a successful same-handle migration test proves restart durability;
+- AppData is always preferable to AppLocalData;
+- embedded and remote deployments have identical operational surfaces;
+- same-handle schema idempotence proves restart durability;
 - SurrealKV automatically enables version history;
-- a readiness probe replaces deeper database health/consistency testing.
-
-SurrealDB currently describes SurrealKV as an important embedded/local-first path while still documenting deployment trade-offs. Re-evaluate engine and durability assumptions when workload or deployment changes.
+- a readiness probe replaces deeper database validation;
+- any particular multi-store or authority architecture should be chosen.
 
 ---
 
-## General rule
+## General technical correction
 
-For desktop/local-first applications, **connection mode and lifecycle are part of the API contract**. Establish exact SDK version, engine feature, `Surreal<Db>` handle shape, persistent path ownership, namespace/database selection, migration/readiness behavior, versioning mode, and process-separated durability evidence before declaring the embedded store production-ready.
+For desktop/local-first work, connection mode and lifecycle affect which SurrealDB API and persistence evidence are relevant. Establish the exact SDK version, embedded engine feature, local handle type, persistent path API, namespace/database selection, versioning mode, and lifecycle boundary before trusting remembered examples.
