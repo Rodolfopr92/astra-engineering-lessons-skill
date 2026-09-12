@@ -17,7 +17,7 @@ Target:
 ```text
 SurrealDB Rust SDK: =3.2.4
 engine modes: Mem + embedded SurrealKV
-Rust verification toolchain: 1.96
+Rust verification toolchain: 1.96.0
 ```
 
 Checks:
@@ -34,7 +34,23 @@ Run:
 cargo test --manifest-path reproducers/surrealdb-3.2.4/Cargo.toml
 ```
 
-The GitHub workflow `.github/workflows/reproducers.yml` runs this suite on a standard public-repository runner. Public standard GitHub-hosted runners are currently free; no cache/artifact upload is configured.
+## Verification history
+
+The first CI execution compiled successfully and passed four tests, but the rollback test's **postcondition was wrong**: because schema creation occurred inside the forced-failure transaction, the later `SELECT` hit a non-existent table. The test was corrected by defining the table before beginning the transaction.
+
+The corrected suite passed all five tests:
+
+```text
+GitHub Actions run: 34691471041
+head: a837f981cdfc78ad27573101373eff1b37cd2b33
+Rust: 1.96.0
+SurrealDB Rust SDK: 3.2.4
+result: 5 passed, 0 failed
+```
+
+This history is kept deliberately. A failed reproducer that exposes a bad test is useful evidence about the test harness, but it does not falsify the underlying capability claim.
+
+The workflow `.github/workflows/reproducers.yml` runs on a standard public-repository runner. It uses a commit-pinned `actions/checkout` release and grants only `contents: read`. Public standard GitHub-hosted runners are currently free.
 
 ## Cross-version rule
 
