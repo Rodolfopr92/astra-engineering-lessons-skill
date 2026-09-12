@@ -1,6 +1,6 @@
 ---
 name: verified-modern-stack-capabilities
-description: Versioned capability corrections for AI coding agents working with fast-moving engineering stacks, centered on SurrealDB 3.2.4 + Rust. Corrects stale 1.x/2.x priors across RecordId/SurrealValue, embedded SurrealKV + Tauri, SCHEMAFULL, SDK response/value boundaries, relation graphs, BM25/HNSW/RRF search, changefeeds/versioning, transactions, migrations, authority/rebuildability, persistence testing, and evidence discipline.
+description: Versioned capability corrections for AI coding agents working with fast-moving engineering stacks, centered on SurrealDB 3.2.4 + Rust. Corrects stale 1.x/2.x priors across RecordId/SurrealValue, embedded SurrealKV + Tauri, SCHEMAFULL, SDK response/value boundaries, relation graphs, BM25/HNSW/RRF search, changefeeds/versioning, transactions, migrations, persistence testing, and evidence discipline.
 ---
 
 # Verified Modern Stack Capabilities
@@ -9,7 +9,7 @@ This skill exists to correct **stale model knowledge** in fast-moving engineerin
 
 Its deepest target is **SurrealDB 3.2.4 + Rust**, where AI models commonly reproduce older 1.x/2.x APIs, remote-only assumptions, outdated full-text syntax, loose schema assumptions, or incorrect Rust value/record types.
 
-The evidence now comes from several independent proving architectures: remote SurrealKV, embedded Tauri/SurrealKV, SurrealDB as operational authority, and SurrealDB as a rebuildable graph projection. Project-specific facts remain evidence, not universal rules.
+The evidence comes from several independent proving environments, including remote SurrealKV, embedded Tauri/SurrealKV, graph/search workloads, transactional workflows, and projection/replay systems. Project architecture remains outside the skill's authority: case studies supply technical evidence, not planning doctrine.
 
 ## Version baseline
 
@@ -166,42 +166,7 @@ Sequential application writes are not a transaction. Use a real database transac
 
 ---
 
-## 4. Architecture corrections models often miss
-
-### SurrealDB can be the authority
-
-ARGOS demonstrates a local-first architecture where SurrealDB owns durable operational records and relationships.
-
-### SurrealDB can be a rebuildable projection
-
-Alexandria demonstrates an architecture where another transactional store is authoritative and SurrealDB receives revisioned/idempotent graph projections via an outbox.
-
-Neither is the universal rule.
-
-Before designing schema or recovery, ask:
-
-```text
-Is SurrealDB authoritative or derived?
-If derived, what source rebuilds it?
-What identifies projection revision/content?
-What checkpoint makes retry deterministic?
-If authoritative, what transaction/constraint protects multi-record invariants?
-```
-
-### Schema history is not projection history
-
-Keep distinct:
-
-```text
-schema migration ledger
-projection checkpoint
-optional reference-overlay marker
-business/audit history
-```
-
----
-
-## 5. General engineering rules
+## 4. General engineering rules
 
 1. **Use real boundary tests, not mocks alone.**
 2. **Match the deployed connection model.** Remote and embedded paths prove different things.
@@ -214,10 +179,11 @@ business/audit history
 9. **Bind ordinary data; strictly validate any dynamic query identifier/syntax that cannot be bound.**
 10. **A resource-killed build is neither pass nor application compile failure.** Report BLOCKED/INDETERMINATE until meaningful diagnostics exist.
 11. **The strength of a claim must not exceed the strength of its evidence.**
+12. **Do not use this skill to make architecture decisions.** It should provide current technical capabilities and failure modes; project planning decides store ownership, topology, and authority.
 
 ---
 
-## 6. Topic index
+## 5. Topic index
 
 | Topic | Reference | Primary purpose |
 |---|---|---|
@@ -226,7 +192,7 @@ business/audit history
 | **Embedded SurrealKV + Tauri** | [embedded-surrealkv-tauri-local-first.md](references/embedded-surrealkv-tauri-local-first.md) | Local handle/lifecycle, Tauri paths, versioning, fresh installs. |
 | **Query/value/response boundaries** | [surrealdb-3-query-shapes-and-sdk-binding.md](references/surrealdb-3-query-shapes-and-sdk-binding.md) | `.bind()`, `.check()`, `.take_errors()`, NONE/null, RecordId text, transactions. |
 | **Graph/search/changefeeds** | [surrealdb-3-graph-search-and-changefeeds.md](references/surrealdb-3-graph-search-and-changefeeds.md) | Relation schema, BM25/HNSW/RRF, changefeeds, VERSION boundary. |
-| **Migrations/authority/rebuildability** | [surrealdb-3-migrations-authority-and-rebuildability.md](references/surrealdb-3-migrations-authority-and-rebuildability.md) | Append-only migrations, checksums, authority vs projection, rebuild evidence. |
+| **Migrations/recovery evidence** | [surrealdb-3-migrations-and-recovery-evidence.md](references/surrealdb-3-migrations-and-recovery-evidence.md) | Migration identity/checksums, statement errors, idempotence vs restart/recovery proof. |
 | **Verification ledger** | [verification-status.md](references/verification-status.md) | Evidence classifications and proving-repository status. |
 | **Subprocess sandboxing** | [subprocess-sandbox-and-path-containment.md](references/subprocess-sandbox-and-path-containment.md) | Path containment, symlinks, bounded streaming. |
 | **Multi-agent coordination** | [multi-agent-clobbering-and-concurrency.md](references/multi-agent-clobbering-and-concurrency.md) | Worktree clobbering and optimistic concurrency. |
@@ -235,14 +201,14 @@ business/audit history
 
 ---
 
-## 7. Maintenance rule
+## 6. Maintenance rule
 
 When a real project exposes a stale-model failure:
 
 ```text
 model prior
    ↓
-identify exact version + engine + authority mode
+identify exact version + engine + connection mode
    ↓
 check current official API
    ↓
@@ -250,9 +216,11 @@ reproduce smallest useful behavior
    ↓
 fix production code + regression test
    ↓
-extract generalized correction
+extract generalized technical correction
    ↓
 retain project-specific incident only as evidence
 ```
 
 If a finding is supported only by a proving repository, keep it **CASE-STUDY EVIDENCE** until a minimal reproducer or official API source justifies promotion.
+
+If a finding is primarily about what architecture a project *should choose*, leave it in the project's planning/ADR material rather than promoting it into this capability skill.
