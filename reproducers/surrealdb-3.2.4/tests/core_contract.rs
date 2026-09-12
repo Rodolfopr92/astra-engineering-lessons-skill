@@ -110,6 +110,12 @@ async fn surrealkv_engine_selector_produces_local_db_handle() -> surrealdb::Resu
 async fn explicit_transaction_failure_rolls_back_prior_write() -> surrealdb::Result<()> {
     let db = memory_db().await?;
 
+    // Keep schema existence outside the transaction so the post-rollback
+    // assertion tests row atomicity rather than whether DDL was also rolled back.
+    db.query("DEFINE TABLE tx_item SCHEMALESS")
+        .await?
+        .check()?;
+
     let response = db
         .query(
             "BEGIN TRANSACTION;
