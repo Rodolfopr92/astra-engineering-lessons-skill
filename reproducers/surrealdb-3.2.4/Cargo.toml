@@ -1,0 +1,11 @@
+[package]
+name = "surreal-rust-tauri-reproducers"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[dependencies]
+surrealdb = { version = "=3.2.4", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tempfile = "3"
