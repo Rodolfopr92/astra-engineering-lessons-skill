@@ -2,13 +2,13 @@
 
 A versioned engineering skill for **correcting stale AI-model priors** in fast-moving software stacks.
 
-The repository began as lessons extracted from Astra Analytics Bot, but its primary purpose is broader: give coding agents current, verified capability information when their training data strongly reflects older APIs or behavior.
+The repository began as lessons extracted from Astra, but its purpose is broader: give coding agents current, evidence-graded capability information when their training data strongly reflects older APIs or behavior.
 
-The deepest target remains **SurrealDB 3.2.4 + Rust**, now covering both remote/server and **embedded SurrealKV + Tauri/local-first** architectures.
+The deepest target remains **SurrealDB 3.2.4 + Rust**, now informed by several independent local-first, graph, search, projection, and operational-authority codebases.
 
 ## What this repository is
 
-Think of it as a small retrieval-time compatibility layer:
+Think of it as a retrieval-time compatibility layer:
 
 ```text
 stale model prior
@@ -17,12 +17,12 @@ versioned correction
       ↓
 official API evidence
       ↓
-real compile/runtime test
+real compile/runtime/case-study evidence
       ↓
 agent receives current capability
 ```
 
-It is deliberately not a replacement for official documentation. The source-of-truth order is:
+Source-of-truth order:
 
 1. Current target repository / lockfile
 2. Official documentation for the target version
@@ -40,7 +40,19 @@ It is deliberately not a replacement for official documentation. The source-of-t
 | Tauri capability coverage | 2.x path/runtime APIs |
 | Last verification pass | 2026-09-12 |
 
-Official SurrealDB documentation currently identifies Rust SDK **3.2.4** as the latest SDK and documents `SurrealValue`, `RecordId`, embedded engines, `kv-surrealkv`, SCHEMAFULL nested-object behavior, and the 3.x `type::record()` function. Current Tauri 2 APIs expose application-scoped data directories suitable for persistent local-first state.
+Current coverage now includes much more than basic CRUD:
+
+- `RecordId`, `SurrealValue`, `type::record()` and 3.x type boundaries;
+- remote and embedded SurrealKV architectures;
+- Tauri/local-first storage paths and embedded lifecycle evidence;
+- SCHEMAFULL nested object/array rules and `FLEXIBLE`;
+- `.bind()`, `.check()`, `.take_errors()`, NONE/null, and explicit SDK-value boundaries;
+- typed relation tables and graph integrity patterns;
+- BM25 full-text, HNSW vector search, KNN distance and RRF hybrid search;
+- changefeeds versus versioned-storage time travel;
+- transactions, migration ledgers, checksums and schema idempotence;
+- SurrealDB as either operational authority or rebuildable projection;
+- process-separated SurrealKV restart/stress testing.
 
 ## Repository structure
 
@@ -54,6 +66,8 @@ Official SurrealDB documentation currently identifies Rust SDK **3.2.4** as the 
     ├── surrealdb-3-contract-and-pitfalls.md
     ├── embedded-surrealkv-tauri-local-first.md
     ├── surrealdb-3-query-shapes-and-sdk-binding.md
+    ├── surrealdb-3-graph-search-and-changefeeds.md
+    ├── surrealdb-3-migrations-authority-and-rebuildability.md
     ├── verification-status.md
     ├── subprocess-sandbox-and-path-containment.md
     ├── multi-agent-clobbering-and-concurrency.md
@@ -61,59 +75,61 @@ Official SurrealDB documentation currently identifies Rust SDK **3.2.4** as the 
     └── rigorous-ci-harness-and-testing-discipline.md
 ```
 
-`capability-update-template.md` is the standard format for extending the repository to another breaking API/version gap without losing evidence quality.
+`capability-update-template.md` is the standard format for extending the repository without losing evidence quality.
 
 ## Evidence vocabulary
 
 Every important claim should be understood as one of:
 
 - **VERIFIED API** — confirmed by current official documentation or crate API.
-- **TESTED BEHAVIOR** — independently reproduced against the named version in real code/tests.
-- **CASE-STUDY EVIDENCE** — observed in a real proving project but not yet independently reduced/reproduced by this skill repository.
-- **PROJECT CONVENTION** — a design choice that worked in a proving project, not a universal technology requirement.
+- **TESTED BEHAVIOR** — independently reproduced against the named version.
+- **CASE-STUDY EVIDENCE** — observed in a real proving repository but not yet independently reduced here.
+- **PROJECT CONVENTION** — a design decision, not a universal technology requirement.
 - **ARCHITECTURAL INTENT** — planned/recommended work, not implementation evidence.
 
-This distinction prevents several common agent errors:
+This prevents a common agent failure cascade where a project workaround or roadmap sentence is copied often enough to become “fact.”
 
-- a planned feature gets copied into reports until it is mistaken for implemented code;
-- one project's workaround becomes a supposed universal API requirement;
-- an external case-study observation is repeated as independently proven behavior;
-- a resource-killed build is reported as either a pass or a source-code failure.
+## Proving repositories
 
-## Why proving projects still appear here
+The SurrealDB knowledge is now cross-pollinated from several different architectures:
 
-Real projects are empirical laboratories. Bugs discovered there become reusable corrections only after the pattern is generalized.
+| Repository | SurrealDB role | Reusable evidence |
+|---|---|---|
+| Astra-bot | remote operational store | RecordId failures, atomic checkpoints, restart persistence, tenant isolation |
+| Brew & Batch | embedded Tauri/local-first | SCHEMAFULL fresh-install failures, SDK query/binding probes, schema parity |
+| Omphalos-git | embedded graph/intelligence tier | boot/readiness, versioned schema, graph/agent-memory design |
+| Saturno | embedded graph/runtime tier | `Surreal<Db>` handle shape, migration idempotence |
+| Alexandria | rebuildable graph/context projection | outbox, revision/hash identity, projection checkpoints, wipe/rebuild model |
+| ARGOS | SurrealDB operational authority | relation graphs, events, changefeeds, BM25/HNSW/RRF, transactions, checksummed migrations, restart/stress |
+| DELPHIS | embedded local runtime store | `take_errors()`, NONE/null adapter semantics, native Value→Serde boundary, process-separated restart |
 
-Example:
+The skill deliberately does **not** force one authority model. ARGOS and Alexandria are both useful precisely because they make opposite, explicit choices.
+
+## Example: project incident → general capability
 
 ```text
 Astra failure:
 Expected string, got record
       ↓
-root cause:
-SurrealDB intrinsic id is a RecordId, not String
-      ↓
-general capability correction:
-Use surrealdb::types::RecordId when modelling intrinsic IDs,
-or omit intrinsic id and use a logical domain key.
+general correction:
+intrinsic id is RecordId, not String
 ```
-
-A second proving path now comes from Brew & Batch:
 
 ```text
-Tauri/local-first conversion
+ARGOS/Alexandria contrast:
+SurrealDB authority vs rebuildable SurrealDB projection
       ↓
-embedded SurrealKV + SCHEMAFULL fresh-install failures
-      ↓
-general corrections:
-connection mode is part of the contract;
-use stable app-owned data paths;
-declare nested SCHEMAFULL object/array fields;
-validate fresh installs against canonical schema;
-report resource-blocked native builds as indeterminate.
+general correction:
+decide authority/recovery semantics before schema design
 ```
 
-The project incident is evidence. The general rule is the reusable skill.
+```text
+DELPHIS boundary:
+Option::None → JSON null while storage wanted absence
+      ↓
+general correction:
+NONE, NULL and JSON null are distinct contracts
+```
 
 ## Installation in Antigravity
 
@@ -122,47 +138,41 @@ git clone https://github.com/Rodolfopr92/astra-engineering-lessons-skill.git \
   ~/.gemini/antigravity/skills/verified-modern-stack-capabilities
 ```
 
-If the repository is already installed under the older directory name, pulling the latest `main` is sufficient as long as the agent loader reads `SKILL.md` frontmatter.
+If already installed under the older directory name, pulling latest `main` is sufficient if the loader reads `SKILL.md` frontmatter.
 
 ## Maintenance workflow
 
 When a model generates suspicious code for a fast-moving dependency:
 
 1. Identify the likely stale prior.
-2. Check the exact dependency/server/engine version.
-3. Establish connection/storage mode where relevant.
+2. Check exact dependency/server/engine version.
+3. Establish connection/storage/authority mode.
 4. Verify current official documentation.
-5. Reproduce behavior with the smallest real compile/runtime test possible.
+5. Reproduce with the smallest real compile/runtime test possible.
 6. Fix the consuming project.
 7. Add a regression test.
-8. Add the generalized correction here using `references/capability-update-template.md`.
+8. Generalize using `references/capability-update-template.md`.
 
-If a finding comes from an external proving project but has not been independently reduced, label it **CASE-STUDY EVIDENCE** first.
+If a finding comes from another proving repository but has not been independently minimized, label it **CASE-STUDY EVIDENCE** first.
 
 Do not add claims merely because an AI assistant stated them confidently.
 
-## Scope today
+## What the wider repository scan did *not* find
 
-The strongest coverage is SurrealDB 3.2.4 + Rust, including:
+The current indexed/default branches of `daedalus-inventory`, `goldennest`, `thequietledger`, `chronos-runtime-governor`, and the portfolio/profile sites did not surface additional SurrealDB implementation evidence. `castor-finance` surfaced legacy/design notes rather than strong runtime evidence. `emporion-commerce` currently uses Postgres/sqlx rather than SurrealDB.
 
-- stale 1.x/2.x record/type/query priors;
-- native `SurrealValue` / `RecordId` contracts;
-- remote vs embedded connection architecture;
-- embedded SurrealKV and Tauri application-data paths;
-- SCHEMAFULL nested object/array declarations and `FLEXIBLE` behavior;
-- SDK `.bind()` / query-response hardening;
-- transaction/rollback semantics and query-shape verification;
-- real disk/restart or close/reopen persistence testing;
-- schema-bundle parity and replay markers for optional overlays;
-- resource-blocked native-build reporting.
+That negative result matters too: the skill should grow from evidence, not from repository names.
 
-The repository also contains verified, reusable lessons about:
+## Scope beyond SurrealDB
+
+The repository also contains reusable lessons about:
 
 - subprocess path containment and symlink handling;
 - bounded streaming and payload limits;
 - exact-decimal fiscal data;
 - deterministic hostile-XML parsing;
 - multi-agent worktree clobbering;
-- strict CI and fixture-grounded assertions.
+- strict CI, exact-SHA evidence, and fixture-grounded assertions;
+- resource-blocked build reporting.
 
 Future topics should only be added when they address a real stale-prior/capability gap and can be grounded in current evidence.
