@@ -2,15 +2,16 @@
 
 **Last updated:** 2026-09-12
 
-This file prevents a capability skill from turning roadmap prose, project conventions, or old incidents into universal facts.
+This file prevents a capability skill from turning roadmap prose, project conventions, or case-study observations into universal facts.
 
 ## Evidence classes
 
-- **VERIFIED API** — supported by current official documentation / current public API.
-- **TESTED BEHAVIOR** — independently reproduced in code against the named real version.
-- **CASE-STUDY EVIDENCE** — observed in a real proving project, but not yet independently reduced/reproduced by this skill repository.
-- **PROJECT CONVENTION** — a design choice in a proving project; portable only when the same tradeoff applies.
+- **VERIFIED API** — supported by current official documentation / public API.
+- **TESTED BEHAVIOR** — independently reproduced against the named real version.
+- **CASE-STUDY EVIDENCE** — observed in a real proving repository, not yet independently minimized by this skill repository.
+- **PROJECT CONVENTION** — a design choice; portable only when the same tradeoff applies.
 - **ARCHITECTURAL INTENT** — planned/recommended, not implementation evidence.
+- **NOT A GENERAL RULE / FALSE** — explicitly prevents over-generalization.
 
 ---
 
@@ -19,86 +20,121 @@ This file prevents a capability skill from turning roadmap prose, project conven
 | Claim | Status | Evidence |
 |---|---|---|
 | Current official Rust SDK version is 3.2.4 | VERIFIED API | SurrealDB Rust SDK docs |
-| Rust SDK 3.x exposes `surrealdb::types::RecordId` | VERIFIED API | Official Rust examples |
+| Rust SDK 3.x exposes `surrealdb::types::RecordId` | VERIFIED API | Official Rust docs/examples |
 | Rust SDK 3.x uses `SurrealValue` for native value conversion | VERIFIED API | Official working-with-types docs |
-| `#[surreal(...)]` is separate from Serde attributes | VERIFIED API | Official SurrealValue attribute docs |
+| `#[surreal(...)]` is distinct from Serde attributes | VERIFIED API | Official SurrealValue attribute docs |
 | `type::record()` is the 3.x name for pre-3.0 `type::thing()` | VERIFIED API | Official type-function docs |
-| `(table, id)` tuple resources remain supported in Rust SDK methods | VERIFIED API | Official `select` / `create` docs |
-| `.bind()` accepts SDK variable/value forms through `IntoVariables` / `SurrealValue` | VERIFIED API | Official query/working-with-types docs |
-| `kv-surrealkv` exists as an embedded storage feature in 3.2.4 | VERIFIED API | crate feature docs / SurrealDB embedding docs |
-| Deserializing intrinsic `id` into `String` can fail with `Expected string, got record` | TESTED BEHAVIOR | Live SurrealDB 3.2.4 restart test |
-| Real SurrealKV restart tests can expose failures missed by ordinary unit tests | TESTED BEHAVIOR | Astra Phase 4 integration failure/recovery |
-| Server-side checkpoint increments prevent application read-modify-write lost updates | TESTED BEHAVIOR | Concurrent Phase 4 checkpoint tests |
-| Prefer explicit logical IDs such as `artifact_id` in domain structs | PROJECT CONVENTION | Astra architecture |
-| Tenant-per-database isolation is the required architecture for all SurrealDB apps | NOT A GENERAL RULE | Astra-specific design |
+| `(table, id)` tuple resources remain supported | VERIFIED API | Official Rust method docs |
+| Deserializing intrinsic `id` into `String` can fail with `Expected string, got record` | TESTED BEHAVIOR | Astra 3.2.4 restart test |
+| Server-side checkpoint increments can avoid application read-modify-write lost updates | TESTED BEHAVIOR | Astra concurrent 3.2.4 checkpoint test |
+| Prefer explicit logical IDs in domain structs | PROJECT CONVENTION | Astra architecture |
 
-### Official references
-
+Official references:
 - https://surrealdb.com/docs/reference/rust
-- https://surrealdb.com/docs/reference/rust/embedding
-- https://surrealdb.com/docs/reference/rust/methods/new
 - https://surrealdb.com/docs/reference/rust/concepts/working-with-types
-- https://surrealdb.com/docs/reference/rust/concepts/surrealvalue-attributes
-- https://surrealdb.com/docs/reference/rust/methods/query
 - https://surrealdb.com/docs/reference/query-language/functions/database-functions/type
-- https://surrealdb.com/docs/reference/rust/methods/select
-- https://surrealdb.com/docs/reference/rust/methods/create
 
 ---
 
-## Embedded SurrealKV + Tauri / local-first
+## Embedded SurrealKV / Tauri
 
 | Claim | Status | Evidence |
 |---|---|---|
-| SurrealDB Rust SDK can run embedded without an HTTP/WebSocket server | VERIFIED API | Official embedding docs |
-| SurrealKV can be selected via `kv-surrealkv` | VERIFIED API | 3.2.4 feature docs |
-| Tauri 2 exposes `PathResolver::app_data_dir()` and `app_local_data_dir()` | VERIFIED API | Current Tauri API docs |
-| `app_data_dir()` resolves to platform data dir + bundle identifier | VERIFIED API | Tauri PathResolver docs |
-| Every Tauri app should store its DB in AppData rather than AppLocalData | NOT A GENERAL RULE | App/platform-specific choice |
-| Same-directory reopen should be used to prove embedded persistence | GENERAL TESTING RULE | Persistence boundary logic + Brew & Batch case study |
-| Brew & Batch successfully used embedded SurrealKV/Tauri architecture | CASE-STUDY EVIDENCE | External proving-project report supplied by Manus |
+| Rust SDK supports embedded SurrealDB engines | VERIFIED API | Official Rust SDK docs |
+| Current embedded SurrealKV uses the `kv-surrealkv` feature | VERIFIED API | Official Rust/crate docs |
+| `Surreal::new::<SurrealKv>(path)` is used with an application handle typed `Surreal<Db>` | CASE-STUDY EVIDENCE | Omphalos, Saturno, ARGOS, DELPHIS |
+| Tauri 2 exposes application-scoped data directories suitable for persistent local state | VERIFIED API | Tauri API docs |
+| Post-open readiness probing after namespace/database selection improves boot evidence | PROJECT PATTERN | Omphalos |
+| Same-handle schema reapplication proves process restart durability | FALSE | It proves idempotence, not restart |
+| Process-separated writer/reader tests provide stronger embedded persistence evidence | CASE-STUDY EVIDENCE | ARGOS, DELPHIS |
+| SurrealKV automatically enables `VERSION` history | FALSE | Versioning is opt-in |
+| Rust embedded SurrealKV can enable versioning with `.versioned()` | VERIFIED API | Official `new()` docs |
 
 Official references:
-- https://docs.rs/tauri/latest/tauri/path/struct.PathResolver.html
-- https://v2.tauri.app/reference/javascript/api/namespacepath/
-- https://surrealdb.com/docs/reference/rust/embedding
 - https://surrealdb.com/docs/reference/rust/methods/new
+- https://surrealdb.com/docs/reference/query-language/statements/select
 
 ---
 
-## SCHEMAFULL nested objects / arrays
+## SCHEMAFULL / graph schema
 
 | Claim | Status | Evidence |
 |---|---|---|
-| On SCHEMAFULL tables, nested object fields must be declared unless object-containing field is `FLEXIBLE` | VERIFIED API | Current DEFINE FIELD docs |
-| `items.*.field` can define subfields of array<object> | VERIFIED API | Current DEFINE FIELD docs |
-| As of SurrealDB 3.0, undefined nested fields error instead of being silently omitted | VERIFIED API | Current DEFINE FIELD docs |
-| Fresh-install execution is needed to prove authoritative seeds match SCHEMAFULL declarations | GENERAL TESTING RULE | Schema boundary logic + Brew & Batch case study |
-| Brew & Batch exposed undeclared nested object/array fields only during fresh install | CASE-STUDY EVIDENCE | External proving-project report supplied by Manus |
-
-Official references:
-- https://surrealdb.com/docs/reference/query-language/statements/define/field
-- https://surrealdb.com/docs/reference/query-language/statements/define/table
+| Undefined nested fields on SCHEMAFULL objects error in current 3.x unless declared / made FLEXIBLE | VERIFIED API | Official DEFINE FIELD docs |
+| `TYPE RELATION FROM ... TO ...` and `IN ... OUT ...` are current relation-table syntax | VERIFIED API | Official DEFINE TABLE docs |
+| `object FLEXIBLE` is appropriate when arbitrary nested keys are intentional | VERIFIED API | Official schema docs |
+| Every graph edge should have unique `(in,out)` | NOT A GENERAL RULE | Domain-dependent integrity policy |
+| Fresh-install seeds can expose missing nested schema hidden by upgraded dev state | CASE-STUDY EVIDENCE | Brew & Batch, Alexandria validation |
 
 ---
 
-## SurrealQL 3.2.4 query-shape / transaction observations
+## Query / response / value boundaries
 
 | Claim | Status | Evidence |
 |---|---|---|
-| `RELATE ... SET` uses `field = value`; `CONTENT` uses object-literal syntax | VERIFIED API | Official RELATE docs |
-| Explicit transactions roll back on statement error / `THROW` | VERIFIED API | Official transaction docs |
-| `.check()` should be used to surface statement errors from critical `db.query(...)` calls | VERIFIED API / HARDENING PATTERN | Rust query docs + tested application use |
-| Explicit `<record>$variable` casts were reliable in some dynamic Brew & Batch queries | CASE-STUDY EVIDENCE | External proving-project report |
-| Materializing IDs via `LET $ids = SELECT VALUE id ...` improved some tested `FOR` loops | CASE-STUDY EVIDENCE | External proving-project report |
-| Every `FOR` loop requires pre-materialized IDs | FALSE / NOT GENERALIZED | Context-specific query behavior |
-| Every bound record parameter must be `<record>$var` | FALSE / NOT GENERALIZED | Typed `RecordId` and other forms exist |
-| Decimal values can cross a JSON/test boundary as strings depending on serialization layer | CASE-STUDY EVIDENCE | Brew & Batch assertion mismatch |
+| Outer `.query(...).await` success can still contain failing statements | VERIFIED API | Rust error-handling docs |
+| `.check()` fails on statement error | VERIFIED API | Rust query docs |
+| `.take_errors()` preserves indexed statement failures | VERIFIED API | Rust query/error-handling docs |
+| Durable retry/security logic should match structured error kinds rather than message text | VERIFIED API | Rust error-handling docs |
+| `NONE` means absence; `NULL` is a stored empty value | VERIFIED API | NONE/NULL docs |
+| Ordinary JSON serialization of Rust `Option::None` can require adapter handling when storage semantics require absence | CASE-STUDY EVIDENCE | DELPHIS |
+| `surrealdb::types::Value -> into_json_value() -> Serde` is a viable explicit legacy-domain boundary | CASE-STUDY EVIDENCE | DELPHIS |
+| `<record>$variable` is universally required for dynamic records | NOT A GENERAL RULE | Brew & Batch observation only |
+| UUID-shaped text record IDs may render with backtick delimiters when cast to string | CASE-STUDY EVIDENCE | ARGOS |
 
 Official references:
-- https://surrealdb.com/docs/reference/query-language/statements/relate
-- https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions
+- https://surrealdb.com/docs/reference/rust/concepts/error-handling
 - https://surrealdb.com/docs/reference/rust/methods/query
+- https://surrealdb.com/docs/reference/query-language/language-primitives/data-types/none-and-null
+
+---
+
+## Search / graph / changefeeds / temporal
+
+| Claim | Status | Evidence |
+|---|---|---|
+| Pre-3.0 `SEARCH ANALYZER` full-text syntax changed to `FULLTEXT ANALYZER` in 3.x | VERIFIED API | Official search docs |
+| `search::score()` and `search::rrf()` are current search functions | VERIFIED API | Official search docs |
+| HNSW vector indexes and KNN operators are current | VERIFIED API | Official vector docs |
+| BM25 + HNSW candidate lists can be fused with RRF | VERIFIED API | Official hybrid-search docs |
+| ARGOS implements BM25 + HNSW + RRF on SurrealDB 3.2.3 | CASE-STUDY EVIDENCE | ARGOS schema/runtime |
+| `CHANGEFEED` + `SHOW CHANGES ... SINCE` provides replayable mutation history within retention | VERIFIED API | Official changefeed/SHOW docs |
+| Changefeeds are the same thing as `SELECT ... VERSION` history | FALSE | Separate mechanisms |
+| `SELECT ... VERSION` requires a versioning-enabled supported storage engine | VERIFIED API | Official SELECT/storage docs |
+| Choosing SurrealKV alone automatically enables time-travel history | FALSE | Versioning must be enabled |
+
+Official references:
+- https://surrealdb.com/docs/reference/query-language/functions/database-functions/search
+- https://surrealdb.com/docs/learn/data-models/vector-search/hybrid-search
+- https://surrealdb.com/docs/learn/querying/real-time/changefeeds
+- https://surrealdb.com/docs/reference/query-language/statements/select
+
+---
+
+## Transactions
+
+| Claim | Status | Evidence |
+|---|---|---|
+| Explicit transactions are all-or-nothing and can be deliberately aborted | VERIFIED API | SurrealDB transaction docs |
+| Rust SDK exposes manual transaction `commit()` / `cancel()` | VERIFIED API | Rust transaction docs |
+| Sequential independent `upsert().await?` calls are equivalent to one transaction | FALSE | Separate operations |
+| Failure injection should prove multi-record rollback | GENERAL TESTING RULE | High-assurance persistence discipline |
+| ARGOS proposal signing persists multiple records/edge/outbox in one transaction and uses uniqueness backstops | CASE-STUDY EVIDENCE | ARGOS R34/R35 |
+
+---
+
+## Migrations / authority / rebuildability
+
+| Claim | Status | Evidence |
+|---|---|---|
+| Append-only ordered migrations + migration table are a useful mature-app pattern | CASE-STUDY EVIDENCE | ARGOS, Omphalos, Saturno, DELPHIS |
+| Deterministic migration record IDs improve idempotence | CASE-STUDY EVIDENCE | ARGOS, Omphalos/Saturno |
+| Recording migration-body checksums improves schema identity evidence | CASE-STUDY EVIDENCE | ARGOS |
+| Same-handle migration idempotence and process-restart durability are different claims | GENERAL TESTING RULE | Saturno vs ARGOS/DELPHIS |
+| SurrealDB must always be the system of record | FALSE | ARGOS uses authority; Alexandria uses derived projection |
+| SurrealDB must always be rebuildable/derived | FALSE | Architecture-dependent |
+| Idempotent outbox + revision/hash/checkpoint is a useful projection pattern | CASE-STUDY EVIDENCE | Alexandria |
+| Omphalos reconstruction invariant is fully implemented and proven | ARCHITECTURAL INTENT / PARTIAL | Rebuild file still contains TODO stages |
 
 ---
 
@@ -120,7 +156,7 @@ Official references:
 | A build terminated by OOM/quota/sandbox death before meaningful compiler diagnostics is a pass | FALSE | No completed build evidence |
 | The same event is automatically an application compile failure | FALSE | Infrastructure can terminate first |
 | `BLOCKED / INDETERMINATE` is a useful third reporting state for resource-limited verification | GENERAL EVIDENCE RULE | CI/reproducibility discipline |
-| Brew & Batch native build was blocked while compiling `surrealdb-core` before application diagnostics | CASE-STUDY EVIDENCE | External proving-project report |
+| DELPHIS also records native-build/resource failures separately from source/test failures | CASE-STUDY EVIDENCE | Native validation docs |
 
 ---
 
@@ -130,10 +166,9 @@ Official references:
 |---|---|---|
 | Worker-returned paths must not be trusted | GENERAL SECURITY RULE | Threat model + regression tests |
 | Checking raw `symlink_metadata()` before canonicalization detects direct symlink output | TESTED BEHAVIOR | Astra Phase 3.1 tests |
-| Canonicalized output must remain under canonical sandbox root | TESTED BEHAVIOR | Outside-path and nested-symlink tests |
-| `tempfile::TempDir` provides a stronger isolation primitive than predictable manual temp names | PROJECT/GENERAL PATTERN | Astra hardening |
+| Canonicalized output must remain under canonical sandbox root | TESTED BEHAVIOR | Astra attack tests |
 | `fastrand` is cryptographically secure | FALSE | It is not a CSPRNG |
-| `fastrand` may be acceptable for collision-avoidance when secrecy is not the security boundary | PROJECT CONVENTION | Astra inner filename use |
+| `fastrand` may be acceptable for collision avoidance when secrecy is not the boundary | PROJECT CONVENTION | Astra use |
 
 ---
 
@@ -141,31 +176,42 @@ Official references:
 
 | Claim | Status | Evidence |
 |---|---|---|
-| NF-e amounts should use exact decimals rather than `f32`/`f64` | GENERAL FINANCIAL RULE | Decimal integration tests |
-| 44-digit access-key Modulo-11 verification is implemented | TESTED BEHAVIOR | Phase 5 parser tests |
+| Fiscal monetary values should use exact decimals rather than `f32`/`f64` | GENERAL FINANCIAL RULE | Decimal tests |
+| 44-digit access-key Modulo-11 verification is implemented in Astra Phase 5 | TESTED BEHAVIOR | Phase 5 parser tests |
 | Raw `NFe` and `nfeProc` are structurally distinguished | TESTED BEHAVIOR | Phase 5 fixtures/tests |
-| `nfeProc` protocol fields can be extracted deterministically | TESTED BEHAVIOR | Phase 5 fixture/tests |
 | Parsed NF-e data is legally/fiscally validated by SEFAZ | NOT IMPLEMENTED | No live SEFAZ verification |
 | XML signature chain is cryptographically verified | NOT IMPLEMENTED | No signature verification |
-| NF-e multi-table materialization is transactionally all-or-nothing | OPEN / NOT YET PROVEN | Current Phase 5 persistence uses sequential writes |
-| R$ 0.02 item-total tolerance is mandated by SurrealDB or NF-e technology | FALSE | It is an Astra validation policy |
+| NF-e multi-table materialization is transactionally all-or-nothing | OPEN / NOT YET PROVEN | Current PR uses sequential writes |
+| R$ 0.02 tolerance is mandated by NF-e/SurrealDB | FALSE | Astra validation policy |
 
 ---
 
-## Agent / multi-agent engineering
+## Proving repositories scanned
 
-| Claim | Status | Evidence |
-|---|---|---|
-| Two agents can overwrite each other's changes in a shared worktree | TESTED INCIDENT | Astra repository clobbering incident |
-| `git status`/re-read before write reduces clobbering risk | GENERAL PRACTICE | Incident remediation |
-| Separate branches/worktrees provide stronger isolation | GENERAL PRACTICE | Git workflow design |
-| mtime alone is a complete concurrency-control mechanism | FALSE | It can be a signal, not a transactional guarantee |
+### High-value SurrealDB evidence
+
+- **Astra-bot** — remote WS + SurrealKV, tenant isolation, document ingest, concurrency/restart, NF-e parser.
+- **DLF merchanting operations** — Kaiju staged-ingest / Bronze patterns, tracked separately from this scan.
+- **Brew & Batch** — external Tauri + embedded SurrealKV + SCHEMAFULL/query-shape case study.
+- **Omphalos-git** — embedded boot/readiness, versioned schema, graph and agent-memory schema.
+- **Saturno** — second embedded implementation, `Surreal<Db>` handle shape, schema-idempotence tests.
+- **Alexandria** — SurrealDB as idempotent/rebuildable graph projection with revision/hash/checkpoints.
+- **argos-commercial-operations** — SurrealDB as operational authority; graph, events, changefeeds, BM25/HNSW/RRF, transactions, checksummed migrations, restart/stress evidence.
+- **delphis-intelligence-studio** — embedded adapter boundary, `take_errors()`, NONE/null handling, Value→JSON→Serde bridge, process-separated restart/stress.
+
+### No new SurrealDB capability evidence found on indexed/default branches
+
+- `daedalus-inventory`
+- `goldennest`
+- `thequietledger`
+- `chronos-runtime-governor`
+- portfolio/profile/GitHub Pages repositories
+
+`castor-finance` surfaced legacy/design prose rather than strong runtime evidence. `emporion-commerce` currently uses a Postgres/sqlx Rust workspace rather than SurrealDB.
 
 ---
 
 ## Proving-project status (Astra)
-
-This section is evidence bookkeeping, not a general capability contract.
 
 ### Proven / merged or exact-SHA green
 
@@ -173,26 +219,14 @@ This section is evidence bookkeeping, not a general capability contract.
 - MarkItDown subprocess conversion.
 - bounded Telegram file intake.
 - worker-output containment and symlink rejection.
-- Rust-owned source/canonical hashes.
-- document artifact persistence.
-- unique source-hash dedupe.
+- document artifact persistence and unique source-hash dedupe.
 - atomic checkpoint increments with conflict retry.
 - SurrealKV restart persistence.
 - deterministic NF-e parser and exact-decimal model on PR #8 exact green head.
 
 ### Known open issue
 
-- NF-e root/child materialization is currently sequential rather than one all-or-nothing database transaction. Do not describe Phase 5 persistence as transactionally atomic until a failure-injection rollback test proves it.
-
-### Architectural intent, not implementation evidence
-
-- supplier email intake.
-- production backup/restore/monitoring baseline.
-- Docling/OCR fallback pipeline.
-- DuckDB/Polars analytics worker.
-- RAG/retrieval.
-- speech transcription worker.
-- browser-action worker.
+- NF-e root/child materialization remains sequential rather than one all-or-nothing database transaction. Do not describe Phase 5 persistence as transactionally atomic until failure-injection rollback proves it.
 
 ---
 
@@ -200,29 +234,17 @@ This section is evidence bookkeeping, not a general capability contract.
 
 Whenever a claim moves categories, update this ledger.
 
-Examples:
-
 ```text
 CASE-STUDY EVIDENCE
-    → reduce to minimal reproducer
-    → independently run against named version
-    → TESTED BEHAVIOR
+  → isolate minimal reproducer / confirm official API
+  → TESTED BEHAVIOR or VERIFIED API
 ```
-
-```text
-ARCHITECTURAL INTENT
-    → implementation lands
-    → integration test proves behavior
-    → TESTED BEHAVIOR
-```
-
-or:
 
 ```text
 VERIFIED API for 3.2.4
-    → dependency upgrades
-    → re-check official docs and compile
-    → VERIFIED API for new baseline
+  → dependency upgrade
+  → re-check docs + compile/runtime
+  → VERIFIED API for new baseline
 ```
 
-Never preserve an old version label simply because the example still looks plausible.
+Never preserve an old version claim simply because the old example still looks plausible.
