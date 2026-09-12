@@ -1,135 +1,326 @@
 # SurrealDB 3.2.4 Contract & Engineering Pitfalls
 
-## 1. The Record ID Deserialization Trap
+**Target baseline:** SurrealDB server 3.2.4 + Rust SDK 3.2.4  
+**Last verified:** 2026-09-12
 
-### The Symptom
-During Phase 4 integration testing against SurrealDB 3.2.4, the persistence restart test failed with:
+This reference separates the current technology contract from project-specific conventions.
+
+For a fast 2.x → 3.x correction table, read `surrealdb-3-stale-llm-priors.md` first.
+
+---
+
+## 1. Intrinsic Record IDs: `RecordId`, Not `String`
+
+### VERIFIED API
+
+Current official Rust examples model an intrinsic SurrealDB record identifier with:
+
+```rust
+use surrealdb::types::{RecordId, SurrealValue};
+
+#[derive(Debug, SurrealValue)]
+struct Person {
+    id: RecordId,
+    name: String,
+}
+```
+
+Official references:
+- https://surrealdb.com/docs/languages/rust
+- https://surrealdb.com/docs/reference/rust/methods/select
+
+### TESTED BEHAVIOR
+
+A real SurrealDB 3.2.4 persistence/restart test failed when a Rust struct declared:
+
+```rust
+#[derive(SurrealValue)]
+struct ArtifactProbe {
+    id: String,
+}
+```
+
+with:
+
 ```text
 Failed to deserialize field 'id' on type 'ArtifactProbe':
 Expected string, got record
 ```
 
-### The Root Cause
-In SurrealDB, every record has an intrinsic `id` field. While SurrealQL syntax displays records as `table:id` (e.g. `document_artifact:doc_123`), the underlying wire protocol returns `id` as a structured **`RecordId`** (composed of `Table` and `Id`), NOT as a primitive UTF-8 string.
+The important correction is not “never have a field named `id`.” It is:
 
-When a Rust struct models `id` as:
+> If the field represents SurrealDB's intrinsic record ID, model it with the real record-ID type.
+
+### PROJECT CONVENTION: explicit logical IDs
+
+Astra often omits intrinsic `id` from domain structs and uses a logical key:
+
 ```rust
-// ❌ WRONG
-#[derive(SurrealValue)]
-pub struct DocumentArtifactRecord {
-    pub id: String,
-    pub filename: String,
-}
-```
-The SurrealDB deserializer encounters a `RecordId` variant and aborts because it cannot coerce a structured record pointer into a Rust `String`.
-
-### The Solution: Explicit Logical Domain IDs
-Never bind your application's domain primary key to SurrealDB's intrinsic `id` field unless you explicitly type it as `surrealdb::RecordId`. 
-
-Instead, model domain IDs as explicit string attributes and let SurrealDB manage its intrinsic table coordinate:
-```rust
-// ✅ CORRECT
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, SurrealValue)]
-#[surreal(crate = "surrealdb::types")]
-pub struct DocumentArtifactRecord {
-    pub artifact_id: String,
-    pub filename: String,
-    pub mime_type: String,
-    pub source_hash: String,
-    pub canonical_hash: Option<String>,
-    pub status: String,
-    pub row_count: u64,
-    pub metadata_json: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+#[derive(Clone, Debug, SurrealValue)]
+struct DocumentArtifactRecord {
+    artifact_id: String,
+    source_hash: String,
+    status: String,
 }
 ```
 
-When creating or upserting records, specify the record coordinate explicitly in the query or API call:
+then addresses the database record explicitly:
+
 ```rust
-db.upsert(("document_artifact", artifact.artifact_id.as_str()))
+let saved: Option<DocumentArtifactRecord> = db
+    .upsert(("document_artifact", artifact.artifact_id.as_str()))
     .content(artifact.clone())
     .await?;
 ```
 
----
-
-## 2. `SurrealValue` vs. Serde Alone
-
-In SurrealDB 3.x, standard Serde `Serialize` and `Deserialize` are necessary for HTTP/JSON payloads, but **insufficient** for the native Rust SDK driver over WebSocket.
-
-- The native SDK requires `#[derive(SurrealValue)]` with `#[surreal(crate = "surrealdb::types")]`.
-- Types stored in the database must implement `surrealdb::types::SurrealValue`.
-- Supported types:
-  - `String`, `bool`, primitive integers (`u32`, `u64`, `i64`), `Option<T>`, `Vec<T>`.
-  - `chrono::DateTime<Utc>` (native datetime).
-  - `rust_decimal::Decimal` (implements `SurrealValue` natively without precision loss).
-- Never serialize typed database structs into intermediate JSON strings to bypass type errors; this breaks indexes, unique constraints, and SurrealQL query filtering.
+That is an application design choice, not a SurrealDB requirement.
 
 ---
 
-## 3. Atomic Increments vs. TOCTOU in Checkpoints
+## 2. `SurrealValue` Is the Native Rust Value Contract
 
-### The Race Condition
-Under concurrent document ingestion, two workers processing attachments at the same time might read the existing checkpoint, increment the in-memory counter, and write it back:
+### VERIFIED API
+
+SurrealDB 3.x documents `SurrealValue` as the trait used to convert Rust types to and from SurrealDB values.
+
 ```rust
-// ❌ TOCTOU Race Condition:
-let current = get_checkpoint(&db, source_code).await?;
-let new_count = current.records_seen + 1;
-save_checkpoint(&db, new_count).await?;
-```
-Under 20 concurrent tasks, this race results in lost counts (e.g. 20 updates producing a count of 5).
+use surrealdb::types::SurrealValue;
 
-### The Solution: Atomic SurrealQL Query Increments
-Use atomic field increments directly in SurrealQL:
+#[derive(Debug, SurrealValue)]
+struct Employee {
+    name: String,
+}
+```
+
+Its `#[surreal(...)]` attributes resemble Serde attributes, but they are a separate attribute system.
+
+Official references:
+- https://surrealdb.com/docs/reference/rust/concepts/working-with-types
+- https://surrealdb.com/docs/reference/rust/concepts/surrealvalue-attributes
+
+Do not use intermediate JSON serialization as a generic workaround for native type errors. It can change value semantics and make database behavior harder to reason about.
+
+---
+
+## 3. `type::record()` Replaced `type::thing()` in 3.x
+
+### VERIFIED API
+
+Current SurrealDB 3.x:
+
+```surql
+type::record('person', $id)
+```
+
+Pre-3.0 examples often show:
+
+```surql
+type::thing('person', $id)
+```
+
+The official docs explicitly state that `type::record()` was known as `type::thing()` before 3.0 and that the behavior did not otherwise change.
+
+Official reference:
+- https://surrealdb.com/docs/reference/query-language/functions/database-functions/type
+
+---
+
+## 4. Raw Query Responses: Inspect Statement Errors
+
+### TESTED HARDENING PATTERN
+
+For critical raw SurrealQL queries, treat successful transport as distinct from successful statements:
+
 ```rust
-// ✅ CORRECT:
-let sql = "
-    UPSERT type::thing('ingest_checkpoint', $source)
-    MERGE {
-        source_code: $source,
-        records_seen: (records_seen || 0) + $seen,
-        records_inserted: (records_inserted || 0) + $inserted,
-        records_replayed: (records_replayed || 0) + $replayed,
-        records_failed: (records_failed || 0) + $failed,
-        updated_at: time::now()
-    };
-";
+let mut response = db
+    .query("SELECT * FROM document_artifact WHERE source_hash = $hash LIMIT 1")
+    .bind(("hash", source_hash.to_string()))
+    .await
+    .map_err(|e| format!("query transport failed: {e}"))?
+    .check()
+    .map_err(|e| format!("query statement failed: {e}"))?;
+
+let rows: Vec<DocumentArtifactRecord> = response
+    .take(0)
+    .map_err(|e| format!("deserialization failed: {e}"))?;
 ```
-This guarantees that 20 simultaneous concurrent tasks increment the count to exactly 20 without locks or mutexes.
+
+This pattern is especially useful for schema setup, multi-statement queries, and mutations where silently ignoring a statement error would corrupt application assumptions.
 
 ---
 
-## 4. Multi-Tenant Silo Isolation
+## 5. Atomic Counters: Keep the Mutation in SurrealQL
 
-Astra enforces a strict silo model:
-1. **Control Database**: Stores global companies, user subscriptions, and provisioning status in `astra_control`.
-2. **Tenant Database**: Each company receives an isolated namespace (`astra_tenant_<slug>`) and database (`operations`).
-3. **Session Clones**:
-   - The master database client (`Surreal<Ws>`) is cloned.
-   - The cloned session executes `.use_ns(tenant_ns).use_db(tenant_db).await`.
-   - Data in one tenant silo is completely invisible to any other tenant session.
-   - Live tests must verify that concurrent sessions writing to the same table names do not leak or bleed data across namespace boundaries.
+### The application-level race
+
+This is vulnerable to lost updates:
+
+```rust
+let current = get_checkpoint(db, source_code).await?;
+let next = current.records_seen + seen;
+save_checkpoint(db, next).await?;
+```
+
+### TESTED BEHAVIOR / proven pattern
+
+The proving implementation uses one server-side UPSERT:
+
+```surql
+UPSERT type::record('ingest_checkpoint', $source_code) SET
+    source_code = $source_code,
+    records_seen += $seen,
+    records_inserted += $inserted,
+    records_replayed += $replayed,
+    records_failed += $failed,
+    last_source_record_id = IF $last_record_id != NONE {
+        $last_record_id
+    } ELSE {
+        last_source_record_id
+    },
+    last_source_time = IF $last_record_id != NONE {
+        time::now()
+    } ELSE {
+        last_source_time
+    },
+    updated_at = time::now();
+```
+
+The Rust caller:
+
+1. binds parameters;
+2. awaits the query;
+3. calls `.check()`;
+4. retries only recognized transaction-conflict errors with bounded backoff;
+5. deserializes the returned record.
+
+A concurrent regression test verified that 20 parallel increments produced exactly 20, rather than losing updates.
+
+Do not simplify this lesson into a different SurrealQL expression unless that expression is separately verified against the target version.
 
 ---
 
-## 5. The SurrealKV Restart Persistence Discipline
+## 6. Uniqueness Must Live in the Database When It Defines Identity
 
-### Why In-Memory Testing Is a False Friend
-Testing exclusively against `surrealdb::engine::local::Mem` or mocked repositories gives a false sense of security. In-memory engines:
-- Do not serialize data to disk.
-- Do not test write-ahead log (WAL) replay or database recovery.
-- Do not surface socket connection teardowns or wire protocol deserialization mismatches.
+### TESTED PATTERN
 
-### The Restart Test Pattern
-Astra's test harness enforces a 2-phase restart test:
-1. **Seed Phase**:
-   - Connects to SurrealDB 3.2.4 running on persistent storage (`surrealkv:///path/to/db`).
-   - Writes sentinel probes, document artifacts, representations, checkpoints, dead letters, and NF-e records.
-2. **Server Kill**:
-   - Kills the SurrealDB process with `kill -0` / SIGTERM.
-   - Verifies the process is completely terminated.
-3. **Restart & Verify Phase**:
-   - Starts a fresh SurrealDB process pointing to the exact same storage directory.
-   - Reconnects via WebSocket.
-   - Queries and asserts that every typed record, child relationship, and numeric total survived restart intact.
+If `source_hash` defines artifact identity for a tenant, enforce it in SurrealDB:
+
+```surql
+DEFINE INDEX OVERWRITE idx_document_artifact_source_hash
+ON TABLE document_artifact COLUMNS source_hash UNIQUE;
+```
+
+Then use an indexed parameterized lookup:
+
+```rust
+let mut response = db
+    .query("SELECT * FROM document_artifact WHERE source_hash = $hash LIMIT 1")
+    .bind(("hash", source_hash.to_string()))
+    .await?
+    .check()?;
+```
+
+An application preflight such as `SELECT → if absent → INSERT` is not a substitute for a storage-engine uniqueness constraint under concurrency.
+
+---
+
+## 7. Multi-Tenant Isolation Is an Application Architecture, Not a 3.x Requirement
+
+### PROJECT CONVENTION
+
+Astra uses a control database plus isolated tenant namespace/database sessions. Cloned clients select the target namespace/database for each tenant.
+
+That architecture provides a strong silo boundary for Astra, but it is not a universal SurrealDB rule. Other systems may correctly use row-level scoping, separate clusters, or another tenancy model.
+
+The reusable lesson is:
+
+> Test the tenancy boundary you actually claim, against the real connection/session mechanism you actually deploy.
+
+---
+
+## 8. Real SurrealKV Restart Testing
+
+### What `Mem` can and cannot prove
+
+In-memory engines are useful for fast tests. They do **not** prove:
+
+- disk persistence;
+- process restart/recovery;
+- remote WebSocket serialization behavior;
+- reconnection behavior;
+- the exact production storage path.
+
+### TESTED BEHAVIOR
+
+Astra's restart test:
+
+```text
+start SurrealDB 3.2.4 on surrealkv://<temp-dir>
+→ connect over WebSocket
+→ write typed records
+→ assert seed state
+→ terminate server process
+→ start a fresh server on the same directory
+→ reconnect
+→ re-read typed records and exact numeric fields
+```
+
+This test caught the `Expected string, got record` bug after ordinary tests had passed.
+
+The lesson is not “never mock.” It is:
+
+> Mocks and in-memory tests must not substitute for the real persistence boundary when persistence correctness is part of the claim.
+
+---
+
+## 9. Current Official 3.x Rust Patterns Worth Remembering
+
+Current official documentation shows:
+
+```rust
+use surrealdb::types::{RecordId, SurrealValue};
+```
+
+Specific records can still be targeted ergonomically:
+
+```rust
+let person: Option<Person> = db.select(("person", "tobie")).await?;
+
+let created: Option<Person> = db
+    .create(("person", "tobie"))
+    .content(data)
+    .await?;
+```
+
+And SurrealQL record construction uses:
+
+```surql
+type::record('person', 'tobie')
+```
+
+Useful official references:
+- https://surrealdb.com/docs/reference/rust
+- https://surrealdb.com/docs/reference/rust/concepts/working-with-types
+- https://surrealdb.com/docs/reference/rust/methods/select
+- https://surrealdb.com/docs/reference/rust/methods/create
+- https://surrealdb.com/docs/reference/query-language/functions/database-functions/type
+- https://surrealdb.com/docs/reference/query-language/language-primitives/data-types/record-ids
+
+---
+
+## 10. Agent Preflight for SurrealDB Work
+
+Before generating code, establish:
+
+```text
+server version
+SDK version
+language
+remote vs embedded engine
+connection protocol
+storage engine
+schema mode (schemafull/schemaless)
+exact dependency lockfile
+```
+
+Then generate for that environment. Do not silently fall back to remembered 2.x syntax because it looks familiar.
