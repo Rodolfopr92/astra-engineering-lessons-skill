@@ -1,6 +1,7 @@
-# SurrealDB 3.2.4 Query Shapes, Binding, and Transaction Evidence
+# SurrealDB 3.2.4 Query Shapes, Binding, Response, and Value Boundaries
 
 **Baseline:** SurrealDB 3.2.4 + Rust SDK 3.2.4  
+**Additional case-study baseline:** DELPHIS / ARGOS on SurrealDB 3.2.x  
 **Last verified:** 2026-09-12
 
 This reference focuses on small query/SDK details that are expensive when an AI model guesses from older SurrealDB examples.
@@ -8,19 +9,19 @@ This reference focuses on small query/SDK details that are expensive when an AI 
 ## Evidence labels
 
 - **VERIFIED API** — current official documentation.
-- **CASE-STUDY EVIDENCE** — behavior reported from a real SurrealDB 3.2.4 proving project (Brew & Batch), but not independently reproduced by this skill repository as a standalone fixture yet.
+- **CASE-STUDY EVIDENCE** — behavior observed in a real proving project but not independently reduced by this skill repository yet.
 - **PROJECT CONVENTION** — design choice, not a universal API rule.
 
 ---
 
 ## 1. `.bind()` is a typed SDK boundary
 
-The Rust SDK's `.bind()` accepts values implementing its variable conversion contract, including key-value pairs, `vars!`, `object!`, maps of SurrealDB `Value`, and structs that implement `SurrealValue`.
+The Rust SDK's `.bind()` accepts values through the SDK value-conversion contract, including supported key-value pairs, maps/macros of SurrealDB values, and `SurrealValue` types.
 
-Current official example:
+Representative current pattern:
 
 ```rust
-use surrealdb::types::{SurrealValue, vars};
+use surrealdb::types::SurrealValue;
 
 #[derive(SurrealValue)]
 struct Filters {
@@ -34,7 +35,7 @@ let mut response = db
     .check()?;
 ```
 
-Do not assume arbitrary JSON-shaped values are equivalent to native SDK values merely because they serialize with Serde.
+Do not assume arbitrary JSON-shaped values are equivalent to native SDK values merely because they implement Serde.
 
 **VERIFIED API.**
 
@@ -44,75 +45,207 @@ Official sources:
 
 ### Minimal binding fixture
 
-Before threading dynamic values through a large application backend, create a tiny compile/runtime fixture that exercises the exact types you plan to use:
+Before threading dynamic values through a large backend, create a tiny fixture that exercises the exact types you plan to use:
 
 ```text
 Surreal<Db>
 query(...)
-Variables / vars!
-SurrealValue-derived struct or supported map
+SDK variables / supported maps / SurrealValue
 .bind(...)
 .await
-.check()
+.check() or take_errors()
 response.take(...)
 ```
 
-If your architecture uses explicit transaction handles or wrappers such as `SerdeWrapper`, include them in the fixture too.
+If your architecture uses transaction handles or wrapper types, include them in the fixture too.
 
 **GENERAL TESTING RULE.**
 
-Brew & Batch found this useful for catching binding assumptions before they spread through a large Tauri command layer.
+---
+
+## 2. `Ok(Response)` does not mean every statement succeeded
+
+A query has two error layers:
+
+```text
+outer Result
+→ request/transport/query-level failure
+
+response statements
+→ individual statement failures
+```
+
+Current official Rust documentation explicitly warns that `.query(...).await?` may return `Ok` while individual statements failed.
+
+Use `.check()` when you want to fail on the first statement error:
+
+```rust
+let mut response = db.query(sql).await?.check()?;
+```
+
+Use `.take_errors()` when the statement indexes themselves are important diagnostic evidence:
+
+```rust
+let mut response = db.query(sql).await?;
+let errors = response.take_errors();
+for (index, error) in errors {
+    eprintln!("statement {index}: {error}");
+}
+```
+
+**VERIFIED API.**
+
+Official sources:
+- https://surrealdb.com/docs/reference/rust/methods/query
+- https://surrealdb.com/docs/reference/rust/concepts/error-handling
+
+### Error matching
+
+Do not build durable retry/security logic by substring-matching human error text when the SDK exposes structured error kinds. Current 3.x documentation recommends matching the error kind/predicate because message wording may change.
+
+**VERIFIED API.**
+
+---
+
+## 3. `.check()` and `.take_errors()` serve different reporting goals
+
+They are not competing universal rules.
+
+Use `.check()` when:
+
+- migration or mutation code should abort immediately;
+- one failure is enough to fail the operation;
+- you do not need to retain the entire per-statement error map.
+
+Use `.take_errors()` when:
+
+- a diagnostic harness needs all failing statement indexes;
+- a multi-statement response should preserve successful statements for inspection;
+- a test/report needs precise statement-level evidence.
+
+DELPHIS deliberately uses `take_errors()` in its adapter boundary for indexed diagnostics. ARGOS often uses `.check()` in fail-closed mutation/migration paths.
+
+**CASE-STUDY EVIDENCE**, grounded in the current documented API.
+
+---
+
+## 4. Domain types can use `SurrealValue`, or an explicit SDK-Value → JSON → Serde boundary
+
+The preferred native typed path is usually a type implementing `SurrealValue`.
+
+But a legacy/domain model that intentionally derives Serde without `SurrealValue` can decode explicitly:
+
+```rust
+let raw: surrealdb::types::Value = response.take(0)?;
+let json = raw.into_json_value();
+let rows: Vec<MySerdeType> = serde_json::from_value(json)?;
+```
+
+DELPHIS uses this boundary to avoid pretending its existing Serde domain types implement the native SDK conversion trait.
+
+**CASE-STUDY EVIDENCE.**
+
+General rule:
+
+> Make the conversion boundary explicit. Do not accidentally mix native SurrealDB values and JSON/Serde assumptions.
+
+---
+
+## 5. `NONE` and `NULL` are not synonyms
+
+Current SurrealQL distinguishes absence from stored emptiness:
+
+```surql
+UPDATE person:one SET middle_name = NONE; -- field is absent/removed
+UPDATE person:one SET middle_name = NULL; -- field exists with empty value
+```
+
+For schema types:
+
+```surql
+DEFINE FIELD middle_name ON TABLE person TYPE string | NONE;
+```
+
+is equivalent to an optional string.
+
+**VERIFIED API.**
+
+Official source:
+- https://surrealdb.com/docs/reference/query-language/language-primitives/data-types/none-and-null
+
+### JSON serialization trap
+
+Rust `Option::None` serialized through ordinary JSON becomes JSON `null`, not SurrealQL `NONE`. If application semantics require field absence rather than a stored null, do not assume a Serde JSON payload expresses that distinction automatically.
+
+DELPHIS strips selected top-level JSON nulls before `CONTENT` writes where absence is the intended storage contract, while preserving intentional nested null values.
 
 **CASE-STUDY EVIDENCE.**
 
 ---
 
-## 2. Record parameters: verify construction/casting in the target query
+## 6. Record parameters: verify construction/casting in the target query
 
 `type::record()` is the current 3.x constructor name. The Rust SDK also exposes typed `RecordId` values.
 
-However, do not turn that into a rule that every dynamic record expression must use one exact textual form. Query context matters.
+Do not turn that into a rule that every dynamic record expression must use one exact textual form. Query context matters.
 
-Brew & Batch reported reliable behavior in some dynamic 3.2.4 queries using explicit casts:
+Brew & Batch reported reliable behavior in some dynamic 3.2.4 queries using:
 
 ```surql
 <record>$record_id
 ```
 
-Treat this as **CASE-STUDY EVIDENCE**, not a universal syntax replacement. Prefer an actual `RecordId` value when the Rust API naturally supports it, and run the smallest target query against the exact engine/transport when unsure.
+Treat this as **CASE-STUDY EVIDENCE**, not a universal replacement. Prefer an actual `RecordId` value when the Rust API naturally supports it, and run the smallest target query against the exact engine/transport when unsure.
+
+---
+
+## 7. Record display text is not necessarily your canonical transport identity
+
+A text-key record may be rendered with syntax delimiters that are not stored key characters. ARGOS encountered UUID-shaped text keys rendered in forms such as:
+
+```text
+document_envelope:`3406726d-bd4e-4f24-a49b-2c4fdc8ce514`
+```
+
+while its application contract used the canonical transport text:
+
+```text
+document_envelope:3406726d-bd4e-4f24-a49b-2c4fdc8ce514
+```
+
+It centralized record-id normalization and tested both representations.
+
+**CASE-STUDY EVIDENCE.**
 
 General rule:
 
-> Correct the stale `type::thing()` prior first, then verify the exact record-binding expression required by the query you are actually executing.
+> Do not scatter ad-hoc string splitting/quoting logic for record identities across the application. Centralize and test the application's text transport contract, or keep `RecordId` typed for as long as possible.
 
 ---
 
-## 3. Always inspect statement errors
+## 8. Dynamic identifiers are not ordinary bound values
 
-Transport success from `db.query(...).await` does not prove every statement succeeded.
+Values should be bound. Query syntax/identifiers often cannot be parameterized in the same way.
 
-For mutations, schema installation, or multi-statement queries:
+When dynamic syntax is genuinely unavoidable, validate it against a narrow grammar before interpolation.
 
-```rust
-let mut response = db
-    .query(sql)
-    .bind(vars)
-    .await?
-    .check()?;
+ARGOS's optional SurrealML query validates model identifiers/version strings before constructing:
 
-let rows: Vec<MyRow> = response.take(0)?;
+```surql
+RETURN ml::<validated_name><validated_version>($features)
 ```
 
-**VERIFIED API / TESTED APPLICATION PATTERN.**
+and rejects punctuation/query-shaping characters.
 
-Official source:
-- https://surrealdb.com/docs/reference/rust/methods/query
+**CASE-STUDY EVIDENCE / GENERAL INJECTION-SAFETY RULE.**
+
+Do not interpret this as permission to interpolate ordinary user data. Bind ordinary data values.
 
 ---
 
-## 4. `RELATE` data assignment uses normal `SET field = value` syntax
+## 9. `RELATE` data assignment uses normal `SET field = value` syntax
 
-Current SurrealQL syntax is:
+Current SurrealQL syntax:
 
 ```surql
 RELATE person:one->knows->person:two
@@ -126,7 +259,7 @@ RELATE person:one->knows->person:two
 CONTENT { friends: true, strength: 8 };
 ```
 
-Inside `SET`, assignment is `field = value`. Do not paste object-literal `field: value` syntax into a `SET` clause.
+Inside `SET`, assignment is `field = value`, not object-literal `field: value` syntax.
 
 **VERIFIED API.**
 
@@ -135,84 +268,78 @@ Official source:
 
 ---
 
-## 5. Explicit transactions roll back on error / `THROW`
+## 10. Explicit transactions roll back on error / `THROW`
 
-SurrealDB transactions are all-or-nothing. A statement error inside an explicit transaction rolls it back; `THROW` can deliberately abort the transaction.
+SurrealDB transactions are all-or-nothing. A statement error inside an explicit transaction rolls it back; `THROW` can deliberately abort it.
 
-```surql
-BEGIN TRANSACTION;
-UPDATE account:one SET balance -= $amount;
-UPDATE account:two SET balance += $amount;
-IF account:one.balance < 0 {
-    THROW "insufficient funds";
-};
-COMMIT TRANSACTION;
-```
+Current Rust SDK also has a manual transaction API with `commit()` and `cancel()`.
 
 **VERIFIED API.**
 
 Official sources:
+- https://surrealdb.com/docs/reference/rust/concepts/transaction
 - https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions
-- https://surrealdb.com/docs/reference/query-language/language-primitives/transactions
 
 ### Testing implication
 
-For multi-record materialization, prove rollback with failure injection rather than merely trusting a transaction keyword is present.
+For multi-record materialization, prove rollback with failure injection:
 
 ```text
 begin transaction
-→ write root record
-→ write child rows
+→ write root
+→ write children
 → inject deterministic failure
 → confirm no partial state survives
 ```
 
-**GENERAL TESTING RULE.**
+---
+
+## 11. Query-shape observations still require target-version verification
+
+Brew & Batch reported useful 3.2.4 observations:
+
+- materializing IDs first with `LET $ids = SELECT VALUE id ...` made subsequent `FOR` loops reliable in tested queries;
+- ordering/projection combinations required care in exact tested shapes;
+- explicit record casts were useful for dynamic bound record identifiers.
+
+These remain **CASE-STUDY EVIDENCE**.
+
+When a model emits a complex SurrealQL loop, graph mutation, projection, or dynamic record expression:
+
+1. reduce to the smallest query;
+2. run against the exact SurrealDB version and engine;
+3. only then promote to a reusable capability rule.
 
 ---
 
-## 6. Query-shape observations that require target-version verification
+## 12. Decimal precision and representation are separate contracts
 
-Brew & Batch reported several useful SurrealDB 3.2.4 observations while converting a SCHEMAFULL local-first app:
+Exact decimals should remain exact, but diagnostics/JSON may serialize them as strings depending on the chosen boundary.
 
-- materializing IDs first with `LET $ids = SELECT VALUE id ...` made subsequent `FOR` loops reliable in the tested queries;
-- ordering/projection combinations required care in the exact tested shape;
-- explicit record casts were useful for bound record identifiers in dynamic expressions.
+Test both:
 
-These are **CASE-STUDY EVIDENCE**, not yet generalized VERIFIED API rules in this skill.
+```text
+semantic value / precision
+and
+wire/JSON representation
+```
 
-When a model emits a complex SurrealQL loop, projection, graph mutation, or dynamic record expression:
-
-1. reduce it to the smallest query that still expresses the behavior;
-2. run it against the exact SurrealDB version and engine;
-3. only then promote the result to a reusable capability entry.
-
----
-
-## 7. Decimal serialization can cross representation boundaries
-
-Exact decimals should remain exact, but their representation in diagnostics or JSON-shaped test output may be strings rather than native JSON numbers depending on the serialization layer.
-
-Tests should assert the representation actually produced by the chosen boundary instead of assuming `Decimal` implies a JSON numeric token.
-
-Brew & Batch caught assertion drift where a workflow expected numeric JSON while the actual SurrealDB/Rust serialization path produced decimal strings.
+Do not assume `Decimal` implies a JSON numeric token.
 
 **CASE-STUDY EVIDENCE.**
 
-General rule:
-
-> Test semantic precision and boundary representation separately.
-
 ---
 
-## 8. Scope limits
+## 13. Scope limits
 
 This document does not claim:
 
-- `<record>$var` is always preferable to a typed `RecordId`;
+- `<record>$var` is always preferable to typed `RecordId`;
+- every domain struct must derive `SurrealValue`;
+- JSON/Serde conversion is preferable when native typed conversion is available;
+- every error path needs `take_errors()` rather than `.check()`;
 - every `FOR` loop requires pre-materialized IDs;
-- every `ORDER BY` query has the same projection constraints;
-- remote WebSocket and embedded SurrealKV necessarily exercise identical transport code;
+- remote WebSocket and embedded SurrealKV exercise identical internals;
 - SDK behavior should be inferred from JSON serialization alone.
 
-When in doubt, version + engine + minimal real query outrank remembered syntax.
+When in doubt, exact version + engine + conversion boundary + minimal real query outrank remembered syntax.
