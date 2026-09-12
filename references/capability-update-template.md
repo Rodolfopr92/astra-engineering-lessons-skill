@@ -1,8 +1,8 @@
 # Capability Update Template
 
-Use this template when adding a new technology/version correction to the skill.
+Use this template when adding or revising a version-sensitive correction.
 
-The goal is to prevent confident but weakly grounded “current API” claims from accumulating over time.
+The goal is to prevent the skill itself from becoming a confident stale prior.
 
 ---
 
@@ -16,7 +16,21 @@ server/runtime version:
 client/SDK version:
 language/toolchain version:
 connection mode / storage engine:
+desktop/runtime framework version:
 verified date:
+reverify by:
+```
+
+## Baseline mismatch rule
+
+State explicitly what happens if the consuming project uses a different version.
+
+```text
+If target version != verified version:
+- mark this claim UNVERIFIED FOR TARGET
+- check official target-version docs
+- run reproducer if available
+- do not silently transfer TESTED BEHAVIOR across versions
 ```
 
 ## Evidence classification
@@ -29,19 +43,21 @@ Choose one or more:
 [ ] CASE-STUDY EVIDENCE
 [ ] PROJECT CONVENTION
 [ ] ARCHITECTURAL INTENT
+[ ] FALSE / NOT A GENERAL RULE
 ```
 
 Definitions:
 
-- **VERIFIED API** — confirmed in current official documentation/API for the named version.
-- **TESTED BEHAVIOR** — independently reproduced with a minimal compile/runtime/integration test against the named version.
-- **CASE-STUDY EVIDENCE** — observed in a real proving project, but not yet independently reduced/reproduced by this skill repository.
-- **PROJECT CONVENTION** — an application design choice, not a technology requirement.
+- **VERIFIED API** — confirmed in current official documentation/API for the named baseline.
+- **TESTED BEHAVIOR** — independently reproduced against the named baseline.
+- **CASE-STUDY EVIDENCE** — observed in a real proving project, but not independently minimized here.
+- **PROJECT CONVENTION** — an application choice, not a technology requirement.
 - **ARCHITECTURAL INTENT** — proposed/recommended behavior, not implementation evidence.
+- **FALSE / NOT A GENERAL RULE** — retained to block a known over-generalization.
+
+Case-study evidence from another patch/minor version is a lead, not automatic proof for the current baseline.
 
 ## Stale model prior
-
-What older pattern is an AI model likely to generate?
 
 ```text
 <old API / old syntax / wrong assumption>
@@ -59,19 +75,32 @@ Why is it stale?
 <minimal current code or API example>
 ```
 
-## Official sources
+## Claim-level official source
 
-Prefer versioned/current primary sources.
+Attach the primary source directly to the claim, not only to a section bibliography.
 
 ```text
-- <official docs URL>
-- <API reference URL>
-- <release/migration notes URL if relevant>
+claim:
+official source URL:
+source version/currentness:
 ```
 
-## Runtime / compile evidence
+## Reproducer
 
-Record what was actually executed.
+```text
+path:
+command:
+expected result:
+last successful run:
+exact dependency versions:
+engine/transport:
+```
+
+If no reproducer exists, say `NONE YET`.
+
+A reproducer file that has never passed does **not** create TESTED BEHAVIOR.
+
+## Runtime / compile evidence
 
 ```text
 repository:
@@ -82,11 +111,9 @@ environment:
 result:
 ```
 
-If there is no independent runtime evidence, say so. If evidence comes from an external proving project, classify it as CASE-STUDY EVIDENCE until reduced/reproduced independently.
+If evidence comes only from a proving project, classify it as CASE-STUDY EVIDENCE until independently minimized or supported by official API documentation.
 
 ## Scope limits
-
-Explicitly say what this correction does **not** prove.
 
 Examples:
 
@@ -94,60 +121,59 @@ Examples:
 - remote WebSocket only; embedded engine not tested
 - embedded SurrealKV only; remote transport not tested
 - Linux tested; Windows behavior unknown
-- parser extracts protocol fields but does not contact external authority
-- API verified for 3.2.4; do not assume future major versions
+- API verified for 3.2.4; future versions unverified
 ```
 
-## General rule
+## General technical correction
 
-State the reusable lesson without project-specific names.
+State what an agent should know about the technology. Do not turn a project architecture preference into a skill rule.
 
 ```text
-<one or two sentences>
+<one or two technical sentences>
 ```
 
 ## Proving case study (optional)
 
-If a real project exposed the stale prior:
-
 ```text
 project:
+exact dependency version:
 symptom:
 root cause:
 fix:
 regression test:
 ```
 
-The case study is supporting evidence, not the rule itself.
-
-## Reverification trigger
-
-When should this entry be checked again?
+## Reverification triggers
 
 ```text
+[ ] target dependency version differs from baseline
 [ ] dependency major/minor upgrade
-[ ] official API deprecation
+[ ] official API deprecation/change
 [ ] compiler/toolchain upgrade
 [ ] contradictory runtime result
 [ ] new security advisory
-[ ] migration to different transport/storage engine
-[ ] migration to different desktop/runtime framework
+[ ] different transport/storage engine
+[ ] different desktop/runtime framework
+[ ] 90 days since last full verification
 ```
 
 ---
 
-## Acceptance checklist for a new capability entry
+## Acceptance checklist
 
 ```text
 [ ] exact versions named
+[ ] version mismatch behavior stated
 [ ] connection/storage mode named where relevant
 [ ] stale prior shown explicitly
 [ ] current pattern shown explicitly
-[ ] official source linked where available
+[ ] claim-level official source linked where available
+[ ] reproducer linked or explicitly marked absent
 [ ] tested behavior distinguished from documented API
-[ ] external case-study evidence not promoted to independently tested fact
+[ ] cross-version case-study evidence not promoted automatically
 [ ] project convention not presented as universal rule
+[ ] architecture-planning doctrine excluded
 [ ] scope limits stated
-[ ] no roadmap item presented as completed capability
 [ ] old entry superseded or marked stale if needed
+[ ] reverification date/trigger recorded
 ```
