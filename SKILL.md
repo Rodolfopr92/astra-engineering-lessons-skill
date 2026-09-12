@@ -1,116 +1,191 @@
 ---
-name: astra-architecture-and-lessons
-description: Authoritative guide and engineering lessons learned developing Astra Analytics Bot, covering SurrealDB 3.2.4 typed contracts, subprocess sandboxing, multi-agent coordination, deterministic fiscal XML parsing, and zero-compromise CI gates.
+name: verified-modern-stack-capabilities
+description: Versioned capability corrections for AI coding agents working with fast-moving engineering stacks, starting with SurrealDB 3.2.4 + Rust. Use this skill to override stale 1.x/2.x SurrealDB priors, distinguish current verified APIs from project conventions, and apply empirically tested patterns for persistence, sandboxing, exact-decimal fiscal parsing, concurrency, and CI.
 ---
 
-# Astra Architecture & Hard-Earned Engineering Lessons
+# Verified Modern Stack Capabilities
 
-This skill distills the engineering principles, architectural patterns, failure modes, and debugging lessons discovered throughout the development of the **Astra Analytics Bot** across Phases 1 through 5.
+This skill exists to correct **stale model knowledge** in fast-moving engineering stacks.
 
-Any agent or engineer working on Astra or similar high-assurance systems (Rust + SurrealDB 3.2.4 + Python Subprocesses + Multi-Tenant Telemetry + Brazilian Fiscal Invoicing) must consult this document and its companion references.
+Its first and deepest target is **SurrealDB 3.2.4 + Rust**, where AI models commonly reproduce older 1.x/2.x APIs, type names, query functions, or serialization assumptions. The repository also captures reusable, verified patterns for subprocess isolation, exact-decimal financial parsing, multi-agent concurrency, and real persistence testing.
 
----
+Astra is a **proving ground and case study**, not the scope of the skill. Project-specific facts should remain clearly labeled as project conventions or evidence.
 
-## 1. Core Engineering Tenets
+## Version Baseline
 
-1. **Test the Real System, Never Mocks**:
-   - Astra deploys SurrealDB 3.2.4 over WebSocket with persistent disk storage (`surrealkv://`).
-   - Mock engines (`Mem`) hide serialization bugs, record ID mismatches, and disk reload failures. Always run restart-persistence tests that kill the server process, restart it against the exact same data directory, and re-read typed records.
-2. **Explicit Logical IDs Over Intrinsic Database Identifiers**:
-   - Never model SurrealDB's intrinsic `id` field as a primitive `id: String`. SurrealDB returns a structured `RecordId` (`Thing`).
-   - Model your own domain primary keys as explicit strings: `artifact_id`, `checkpoint_id`, `nfe_id`, `dead_letter_id`.
-3. **No Float Arithmetic for Money or Tax**:
-   - Floating-point arithmetic (`f32`/`f64`) produces binary representation errors (e.g. `0.1 + 0.2 = 0.30000000000000004`).
-   - All monetary values, taxes, and rates must use fixed-point arithmetic (`rust_decimal::Decimal`).
-4. **Boundary Validation at the Threshold**:
-   - Validate and sanitize external input (Telegram attachments, XML strings, file paths) at intake before any persistent state or heavy parsing occurs.
-   - Enforce hard limits: 20 MB payload limit, max 32 levels of XML recursion, rejection of DTDs, rejection of control characters.
-5. **Fail-Closed Sandbox Security**:
-   - External subprocesses (like Python workers) are untrusted. Never trust the paths they return.
-   - Canonicalize both sandbox root and output files (`fs::canonicalize`). Reject symlinks, non-regular files, and any path escaping the temporary directory.
+- SurrealDB server: **3.2.4**
+- SurrealDB Rust SDK: **3.2.4**
+- Rust baseline used by the proving project: **1.96**
+- Capability baseline last verified: **2026-09-12**
+- Primary evidence: official documentation + code that compiled + live integration/restart tests
+
+When working against another version, verify the relevant API before copying these patterns verbatim.
 
 ---
 
-## 2. Topic Index & Deep References
+## 1. Source-of-Truth Hierarchy
 
-Refer to the dedicated reference documents in `references/` for full technical breakdowns:
+When sources disagree, use this order:
 
-| Topic | Reference File | Key Takeaway |
+1. **Current target repository and exact dependency lockfile**
+2. **Official documentation for the exact/current version**
+3. **A reproducible compile or integration test against the real system**
+4. **This skill**
+5. **Model memory / prior knowledge**
+
+This skill is a capability patch, not an oracle. If current code or official versioned documentation contradicts it, re-verify and update the skill.
+
+---
+
+## 2. Evidence Labels
+
+Treat statements in this repository according to four categories:
+
+- **VERIFIED API** — confirmed by current official documentation or crate API.
+- **TESTED BEHAVIOR** — reproduced against the named real version in a compile/runtime/integration test.
+- **PROJECT CONVENTION** — a design decision that worked for Astra but is not required by the technology.
+- **ARCHITECTURAL INTENT** — planned or recommended behavior, not yet implementation evidence.
+
+Do not silently promote a project convention into a universal API rule, or a roadmap item into a completed capability.
+
+---
+
+## 3. High-Value Stale-Prior Corrections
+
+### SurrealDB 3.x Rust types
+
+**STALE MODEL PATTERN**
+
+```rust
+use surrealdb::sql::Thing;
+#[derive(Serialize, Deserialize)]
+struct Record { id: String }
+```
+
+**CURRENT VERIFIED PATTERN (3.2.4)**
+
+```rust
+use surrealdb::types::{RecordId, SurrealValue};
+
+#[derive(Debug, SurrealValue)]
+struct Record {
+    id: RecordId,
+}
+```
+
+For domain records where the intrinsic database ID is not needed, a **project convention** is to use explicit logical IDs such as `artifact_id`, `checkpoint_id`, or `nfe_id` and omit intrinsic `id` from the domain struct.
+
+### SurrealQL record constructor
+
+**STALE MODEL PATTERN (pre-3.0)**
+
+```surql
+type::thing('person', $id)
+```
+
+**CURRENT VERIFIED PATTERN (3.x)**
+
+```surql
+type::record('person', $id)
+```
+
+### Native Rust value conversion
+
+`SurrealValue` is the current native Rust SDK conversion contract. Its `#[surreal(...)]` attributes are inspired by Serde but are not inherited from `#[serde(...)]`.
+
+See `references/surrealdb-3-stale-llm-priors.md` for the dedicated correction table.
+
+---
+
+## 4. General Engineering Rules Proven by Real Failures
+
+1. **Use real boundary tests, not mocks alone.** Unit tests and mocks are useful, but they do not replace WebSocket/native-SDK, disk persistence, restart, or subprocess-boundary tests.
+2. **Do not deserialize SurrealDB intrinsic `id` as `String`.** Use `RecordId` when you need it, or explicit logical IDs when you do not.
+3. **Use exact decimal arithmetic for money and fiscal values.** Avoid binary floating-point for authoritative monetary data.
+4. **Validate hostile input at boundaries.** Enforce byte limits, structural limits, safe filenames, and deterministic parser behavior before durable materialization.
+5. **Treat subprocess output as untrusted.** Reject raw symlinks and non-regular files before canonicalization, then canonicalize and enforce sandbox containment.
+6. **Prefer storage-engine atomicity to application read-modify-write.** Use server-side increments/constraints and test concurrency against the real database.
+7. **Never confuse collision-avoidance randomness with cryptographic randomness.** Document the actual security property.
+8. **A green unit suite is evidence, not proof of persistence correctness.** Kill/restart the real database when persistence matters.
+
+---
+
+## 5. Topic Index
+
+| Topic | Reference | Primary purpose |
 |---|---|---|
-| **SurrealDB 3.2.4 Contract** | [surrealdb-3-contract-and-pitfalls.md](references/surrealdb-3-contract-and-pitfalls.md) | `Expected string, got record` root cause, `SurrealValue` derive, atomic checkpoint counters, silo isolation. |
-| **Subprocess Sandboxing** | [subprocess-sandbox-and-path-containment.md](references/subprocess-sandbox-and-path-containment.md) | Sandbox directory containment, symlink rejection, `BoundedWriter` 20 MB streaming, nonce accuracy (`fastrand` vs CSPRNG). |
-| **Multi-Agent Coordination** | [multi-agent-clobbering-and-concurrency.md](references/multi-agent-clobbering-and-concurrency.md) | Cross-agent file overwrites, mtime hazards, TOCTOU prevention in database creation, git worktree hygiene. |
-| **Authoritative XML & NF-e** | [authoritative-xml-and-fiscal-parsing.md](references/authoritative-xml-and-fiscal-parsing.md) | `roxmltree` DTD immunity, 44-digit Modulo 11 check digit, R$ 0.02 tolerance policy, tenant direction derivation, `NFE_DUPLICATE_CONFLICT`. |
-| **CI & Testing Rigor** | [rigorous-ci-harness-and-testing-discipline.md](references/rigorous-ci-harness-and-testing-discipline.md) | 8-stage automated gate, SurrealKV kill/restart harness, fixture accuracy, `-D warnings` and dependency auditing. |
+| **SurrealDB stale LLM priors** | [surrealdb-3-stale-llm-priors.md](references/surrealdb-3-stale-llm-priors.md) | Fast correction table for 2.x → 3.x mistakes. |
+| **SurrealDB 3.2.4 contract** | [surrealdb-3-contract-and-pitfalls.md](references/surrealdb-3-contract-and-pitfalls.md) | RecordId, SurrealValue, atomic checkpoints, real persistence. |
+| **Verification status** | [verification-status.md](references/verification-status.md) | Separates verified API, tested behavior, project convention, and open work. |
+| **Subprocess sandboxing** | [subprocess-sandbox-and-path-containment.md](references/subprocess-sandbox-and-path-containment.md) | Path containment, symlinks, bounded streaming, nonce classification. |
+| **Multi-agent coordination** | [multi-agent-clobbering-and-concurrency.md](references/multi-agent-clobbering-and-concurrency.md) | Worktree clobbering, TOCTOU, canonical identities. |
+| **Structured XML & NF-e** | [authoritative-xml-and-fiscal-parsing.md](references/authoritative-xml-and-fiscal-parsing.md) | Deterministic XML/NF-e extraction and exact arithmetic. |
+| **CI/testing discipline** | [rigorous-ci-harness-and-testing-discipline.md](references/rigorous-ci-harness-and-testing-discipline.md) | Real-system gates, restart testing, fixture grounding. |
 
 ---
 
-## 3. Quick Reference: Common Pitfalls & How to Avoid Them
+## 6. Quick Correctness Patterns
 
-### Pitfall 1: Deserializing SurrealDB's `id` as `String`
+### SurrealDB record IDs
+
 ```rust
-// ❌ WRONG: Fails at runtime with "Expected string, got record"
-#[derive(SurrealValue)]
-pub struct MyRecord {
-    pub id: String,
-    pub title: String,
+// Technology-level option: keep intrinsic ID with its real type.
+#[derive(Debug, SurrealValue)]
+struct DbRecord {
+    id: RecordId,
+    title: String,
 }
 
-// ✅ CORRECT: Use explicit domain ID, let SurrealDB manage intrinsic id
-#[derive(SurrealValue)]
-pub struct MyRecord {
-    pub record_id: String,
-    pub title: String,
+// Project-level option: omit intrinsic ID and use a logical domain key.
+#[derive(Debug, SurrealValue)]
+struct Artifact {
+    artifact_id: String,
+    title: String,
 }
 ```
 
-### Pitfall 2: Case-Insensitive Content Addressing
+### Worker output containment
+
 ```rust
-// ❌ WRONG: Preserves mixed case or uppercase hex strings, breaking on Windows/macOS
-pub fn to_blob_path(tenant: &str, hash: &str) -> PathBuf {
-    PathBuf::from(tenant).join(&hash[0..2]).join(&hash[2..4]).join(hash)
+let raw = Path::new(output_path);
+let raw_meta = fs::symlink_metadata(raw)?;
+if raw_meta.file_type().is_symlink() || !raw_meta.is_file() {
+    return Err(SecurityError::RejectedOutput);
 }
 
-// ✅ CORRECT: Enforce lowercase ASCII hexadecimal normalization
-pub fn to_blob_path(tenant: &str, hash: &str) -> PathBuf {
-    let lower_hash = hash.to_ascii_lowercase();
-    PathBuf::from(tenant).join(&lower_hash[0..2]).join(&lower_hash[2..4]).join(&lower_hash)
-}
-```
-
-### Pitfall 3: Subprocess Path Escape via Symlinks or Relative Paths
-```rust
-// ❌ WRONG: Naive containment check vulnerable to symlink bypass
-if output_path.starts_with(temp_dir) { ... }
-
-// ✅ CORRECT: Canonicalize both paths to resolve all symlinks and verify regular file
-let canonical_sandbox = fs::canonicalize(temp_dir)?;
-let canonical_output = fs::canonicalize(output_path)?;
-let metadata = fs::symlink_metadata(&canonical_output)?;
-
-if metadata.file_type().is_symlink() || !metadata.is_file() {
-    return Err("symlink or non-regular file rejected");
-}
+let canonical_sandbox = fs::canonicalize(sandbox)?;
+let canonical_output = fs::canonicalize(raw)?;
 if !canonical_output.starts_with(&canonical_sandbox) {
-    return Err("path traversal out of sandbox detected");
+    return Err(SecurityError::PathEscape);
 }
 ```
 
-### Pitfall 4: XML XXE / Billion Laughs Attacks
-```rust
-// ❌ WRONG: General XML parser with entity expansion enabled
-// Vulnerable to memory exhaustion, Billion Laughs, or local file retrieval
+The order matters: checking only `symlink_metadata()` **after** canonicalization no longer tells you whether the original worker-returned path was itself a symlink.
 
-// ✅ CORRECT: roxmltree rejects DTDs by default (Error::DtdDetected)
-// Supplement with recursion depth check and control character validator
-let doc = parse_safe_xml(xml_bytes)?;
+### Atomic checkpoint update
+
+Use a single server-side mutation, inspect statement errors with `.check()`, and retry only conflicts known to be retryable. See the exact tested pattern in the SurrealDB reference rather than inventing a read-modify-write loop.
+
+---
+
+## 7. Maintenance Rule
+
+When a real project uncovers a stale-model failure:
+
+```text
+model prior
+   ↓
+reproduce against exact version
+   ↓
+confirm current official API / runtime behavior
+   ↓
+fix production code
+   ↓
+add regression test
+   ↓
+extract the general correction into this skill
+   ↓
+keep project-specific incident as evidence/case study
 ```
 
-### Pitfall 5: Assuming Test Fixture Values
-```rust
-// ❌ WRONG: Asserting expected numbers from memory or another test file
-assert_eq!(totals.v_nf, Decimal::new(185000, 2)); // Fails if fixture has 800.00!
-
-// ✅ CORRECT: Ground assertions in the exact content of the fixture file
-assert_eq!(totals.v_nf, Decimal::new(80000, 2));
-```
+Prefer **verified corrections over accumulated prose**. If a lesson cannot be tied to an exact version, official source, compile result, or reproducible behavior, label it as architectural intent rather than fact.
