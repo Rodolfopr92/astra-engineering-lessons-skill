@@ -12,6 +12,9 @@ on:
       - ".github/workflows/reproducers.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   surrealdb-3-2-4:
     runs-on: ubuntu-latest
@@ -21,7 +24,7 @@ jobs:
       RUST_BACKTRACE: "1"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust 1.96.0
         run: |
