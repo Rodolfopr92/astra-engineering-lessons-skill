@@ -85,6 +85,17 @@ start real SurrealDB 3.2.4 on surrealkv://<test-dir>
 → assert exact values
 ```
 
+For an embedded desktop architecture, use the analogous reopen test:
+
+```text
+open embedded SurrealKV on fixed directory
+→ write production record types
+→ drop/close handle
+→ create fresh handle on same directory
+→ re-read typed records
+→ assert exact values
+```
+
 This caught a real failure:
 
 ```text
@@ -116,7 +127,8 @@ Rules:
 2. derive expected values from that fixture deliberately;
 3. avoid copying assertions between fixtures without re-grounding them;
 4. give fixtures stable semantic names;
-5. for complex fixtures, document the few fields the test treats as canonical.
+5. for complex fixtures, document the few fields the test treats as canonical;
+6. assert representation and semantic value separately when serialization can turn exact decimals into strings.
 
 A failing test is evidence of inconsistency, not automatic proof that production code is the faulty side.
 
@@ -179,7 +191,48 @@ Do not turn an ignore list into permanent wallpaper.
 
 ---
 
-## 8. Resource-Constrained CI
+## 8. Resource-Constrained Builds: Use a Third State
+
+A native build terminated by infrastructure limits before application diagnostics is **not** a successful build and **not necessarily** an application compile failure.
+
+Report three states separately:
+
+```text
+PASS
+→ compiler/linker completed successfully
+
+FAIL
+→ compiler/linker reached application/dependency diagnostics and reported a code/build error
+
+BLOCKED / INDETERMINATE
+→ OOM, sandbox termination, quota/time limit, runner death, or other infrastructure failure stopped verification before meaningful application diagnostics
+```
+
+For example, if compiling a large dependency such as `surrealdb-core` is terminated by the sandbox before the target crate is checked, the defensible claim is:
+
+```text
+native verification blocked by environment/resource limit before application diagnostics
+```
+
+not:
+
+```text
+application compiles
+```
+
+and not:
+
+```text
+application is broken
+```
+
+This distinction was important in the Brew & Batch Tauri/embedded-SurrealKV case study.
+
+**CASE-STUDY EVIDENCE.**
+
+---
+
+## 9. Resource-Constrained CI
 
 Limiting parallelism such as `-j 2` can improve reliability on constrained developer machines or runners, but it is not a universal correctness rule.
 
@@ -195,7 +248,7 @@ The principle is to avoid mistaking infrastructure exhaustion for application fa
 
 ---
 
-## 9. A Useful Evidence Ladder
+## 10. A Useful Evidence Ladder
 
 From weakest to strongest for a runtime claim:
 
@@ -209,5 +262,7 @@ model says it should work
 < destructive restart/recovery test
 < production observation with monitoring
 ```
+
+`BLOCKED / INDETERMINATE` is not a rung on the ladder. It means the attempted rung was not reached.
 
 Not every change needs the top rung. But the strength of the claim should not exceed the strength of the evidence.
