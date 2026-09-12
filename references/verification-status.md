@@ -28,7 +28,9 @@ Case-study evidence from another patch/minor version is not automatically transf
 
 The first reproducer run exposed an assertion-design flaw in the rollback test: the transaction rolled back the table creation too, so a subsequent `SELECT` failed because the table no longer existed. The test was corrected by defining the table outside the transaction.
 
-The corrected suite passed on GitHub Actions run **34691471041**, exact head **`a837f981cdfc78ad27573101373eff1b37cd2b33`**, using Rust **1.96.0** and `surrealdb = "=3.2.4"`. Five tests passed.
+The corrected suite passed all five tests on run **34691471041**, exact head **`a837f981cdfc78ad27573101373eff1b37cd2b33`**, using Rust **1.96.0** and `surrealdb = "=3.2.4"`.
+
+The workflow itself was then hardened from deprecated `actions/checkout@v4` to commit-pinned checkout **v7.0.1** (`3d3c42e5aac5ba805825da76410c181273ba90b1`) with `contents: read` only. The complete five-test suite passed again on run **34691656259**, exact workflow head **`c91d41d938a6e643da69072700dcb40e1baf857e`**.
 
 Source: `reproducers/surrealdb-3.2.4/tests/core_contract.rs`.
 
@@ -45,7 +47,7 @@ Source: `reproducers/surrealdb-3.2.4/tests/core_contract.rs`.
 | Intrinsic record identifiers use `RecordId` | VERIFIED API | [RecordId 3.2.4](https://docs.rs/surrealdb/3.2.4/surrealdb/types/record_id/struct.RecordId.html) |
 | `type::record()` replaced pre-3.0 `type::thing()` | VERIFIED API | [type::record docs](https://surrealdb.com/docs/reference/query-language/functions/database-functions/type) |
 | `(table, id)` tuple resources remain supported by Rust SDK methods | VERIFIED API | [Working with types](https://surrealdb.com/docs/reference/rust/concepts/working-with-types) |
-| A row containing intrinsic `id` decodes into `RecordId`, while the same row does not decode into a struct declaring `id: String` | TESTED BEHAVIOR | Reproducer run 34691471041, `intrinsic_id_is_record_id_not_string` |
+| A row containing intrinsic `id` decodes into `RecordId`, while the same row does not decode into a struct declaring `id: String` | TESTED BEHAVIOR | Reproducer runs 34691471041 and 34691656259, `intrinsic_id_is_record_id_not_string` |
 
 ---
 
@@ -54,9 +56,9 @@ Source: `reproducers/surrealdb-3.2.4/tests/core_contract.rs`.
 | Claim | Status | Claim-level evidence |
 |---|---|---|
 | `.bind()` accepts SDK variable forms through `IntoVariables` / `SurrealValue` | VERIFIED API | [query `.bind()` docs](https://surrealdb.com/docs/reference/rust/methods/query) |
-| Outer `.query(...).await` success can contain failing statements | VERIFIED API + TESTED BEHAVIOR | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling); reproducer run 34691471041, `outer_query_success_can_contain_statement_errors` |
+| Outer `.query(...).await` success can contain failing statements | VERIFIED API + TESTED BEHAVIOR | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling); reproducer runs 34691471041 and 34691656259 |
 | `.check()` surfaces statement errors | VERIFIED API | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling) |
-| `.take_errors()` preserves indexed statement failures | VERIFIED API + TESTED BEHAVIOR | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling); reproducer run 34691471041 |
+| `.take_errors()` preserves indexed statement failures | VERIFIED API + TESTED BEHAVIOR | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling); reproducer runs 34691471041 and 34691656259 |
 | Durable control flow should prefer structured error kinds over message matching | VERIFIED API | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling) |
 | `<record>$variable` is universally required for bound dynamic records | FALSE / NOT A GENERAL RULE | Brew & Batch observation only; typed `RecordId` and `type::record()` are also supported |
 | UUID-shaped text record IDs may render with backtick delimiters when cast to string | CASE-STUDY EVIDENCE | ARGOS record-identity tests; version-specific transport behavior |
@@ -69,7 +71,7 @@ Source: `reproducers/surrealdb-3.2.4/tests/core_contract.rs`.
 |---|---|---|
 | Rust SDK supports embedded database operation | VERIFIED API | [Rust embedding docs](https://surrealdb.com/docs/reference/rust/embedding) |
 | SurrealKV is available behind `kv-surrealkv` in 3.2.4 | VERIFIED API | [surrealdb 3.2.4 crate](https://docs.rs/crate/surrealdb/3.2.4) |
-| `Surreal::new::<SurrealKv>(...)` can be assigned to a local `Surreal<Db>` handle and queried | TESTED BEHAVIOR | Reproducer run 34691471041, `surrealkv_engine_selector_produces_local_db_handle` |
+| `Surreal::new::<SurrealKv>(...)` can be assigned to a local `Surreal<Db>` handle and queried | TESTED BEHAVIOR | Reproducer runs 34691471041 and 34691656259, `surrealkv_engine_selector_produces_local_db_handle` |
 | SurrealKV historical versioning is opt-in via `.versioned()` | VERIFIED API | [`new()` / versioned backend](https://surrealdb.com/docs/reference/rust/methods/new) |
 | Tauri 2.11.5 exposes `app_data_dir()` | VERIFIED API | [Tauri 2.11.5 PathResolver](https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html) |
 | Tauri 2.11.5 exposes `app_local_data_dir()` | VERIFIED API | [Tauri 2.11.5 PathResolver](https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html) |
@@ -83,9 +85,9 @@ Source: `reproducers/surrealdb-3.2.4/tests/core_contract.rs`.
 
 | Claim | Status | Claim-level evidence |
 |---|---|---|
-| SCHEMAFULL object fields are strict by default | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer run 34691471041, `schemafull_nested_fields_are_strict_unless_flexible` |
-| `FLEXIBLE` permits undeclared keys in object-containing fields | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer run 34691471041 |
-| As of 3.0, undeclared nested SCHEMAFULL fields error rather than being silently omitted | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD 3.x behavior](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer run 34691471041 |
+| SCHEMAFULL object fields are strict by default | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer runs 34691471041 and 34691656259 |
+| `FLEXIBLE` permits undeclared keys in object-containing fields | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer runs 34691471041 and 34691656259 |
+| As of 3.0, undeclared nested SCHEMAFULL fields error rather than being silently omitted | VERIFIED API + TESTED BEHAVIOR | [DEFINE FIELD 3.x behavior](https://surrealdb.com/docs/reference/query-language/statements/define/field); reproducer runs 34691471041 and 34691656259 |
 | `TYPE RELATION FROM ... TO ...` is current relation-table syntax | VERIFIED API | [DEFINE TABLE](https://surrealdb.com/docs/reference/query-language/statements/define/table) |
 | Every relation edge should be unique by `(in,out)` | FALSE / NOT A GENERAL RULE | Domain-dependent integrity rule |
 | Fresh-install execution can expose nested-schema gaps hidden by long-lived dev state | CASE-STUDY EVIDENCE / TESTING RULE | Brew & Batch validation work |
@@ -112,7 +114,7 @@ Source: `reproducers/surrealdb-3.2.4/tests/core_contract.rs`.
 
 | Claim | Status | Claim-level evidence |
 |---|---|---|
-| Explicit transactions are all-or-nothing and can be aborted | VERIFIED API + TESTED BEHAVIOR | [Transactions](https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions); reproducer run 34691471041, `explicit_transaction_failure_rolls_back_prior_write` |
+| Explicit transactions are all-or-nothing and can be aborted | VERIFIED API + TESTED BEHAVIOR | [Transactions](https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions); reproducer runs 34691471041 and 34691656259 |
 | Sequential independent `upsert().await?` calls are one transaction | FALSE | Separate calls are not one ACID unit |
 | Failure injection is appropriate evidence for multi-record rollback claims | GENERAL TESTING RULE | Reproducer demonstrates deterministic rollback assertion |
 | Server-side counter mutation can avoid application read-modify-write lost updates | TESTED BEHAVIOR | Astra 3.2.4 concurrent checkpoint tests |
