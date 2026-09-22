@@ -131,6 +131,43 @@ Official sources:
 
 ARGOS 3.2.3 defines both BM25 and HNSW indexes and implements an RRF search using two subqueries. This closely matches the current official 3.2.x pattern and is useful implementation evidence, but its exact constants (`K`, `EF`, dimensions, limits, RRF `k`) are workload choices rather than universal defaults.
 
+### CRITICAL PITFALL: `<|k, ef|>` Rejects Bound Query Parameters
+
+In SurrealDB 3.2.4, the parser grammar for the HNSW KNN operator `<|k, ef|>` **strictly requires unsigned integer literals**. Attempting to bind variables for `k` or `ef` via parameters:
+
+```surql
+-- ❌ PARSE ERROR IN SURREALDB 3.2.4:
+SELECT content, vector::distance::knn() AS distance
+FROM memory_chunk
+WHERE embedding <|$limit, 40|> $query_embedding
+ORDER BY distance ASC;
+```
+
+fails at runtime with:
+```text
+Parse error: unexpected token '$'
+```
+
+**Tested pattern**:
+Sanitize and clamp the integer bound in application code, then format it as an integer literal into the query string while binding the vector payload via `.bind()`:
+
+```rust
+// Clamp to a safe range to prevent query injection
+let limit = limit.clamp(1, 100);
+let query = format!(
+    "SELECT content, vector::distance::knn() AS distance FROM memory_chunk \
+     WHERE embedding <|{limit}, 40|> $query_embedding \
+     ORDER BY distance ASC"
+);
+let mut res = db
+    .query(query)
+    .bind(("query_embedding", query_vector))
+    .await?
+    .check()?;
+```
+
+**TESTED BEHAVIOR on SurrealDB 3.2.4 (Astra Phase 5 cognitive memory plane).**
+
 ---
 
 ## 4. Changefeeds are replay cursors, not automatic bitemporal history

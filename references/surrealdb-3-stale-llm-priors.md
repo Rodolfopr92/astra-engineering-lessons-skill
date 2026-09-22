@@ -501,3 +501,105 @@ what persistence/restart claim must be proven?
 Do **not** turn this capability preflight into project architecture planning. Questions such as whether SurrealDB should be authoritative, derived, one store among several, or paired with an outbox belong in the project's architecture work.
 
 Exact version + deployment mode + minimal real probe outrank remembered syntax.
+
+---
+
+## 24. HNSW vector search `<|k, ef|>` rejects bound query parameters
+
+**STALE LLM MISTAKE**
+
+Binding `$limit` or `$ef` as variables in vector KNN queries:
+
+```surql
+-- ❌ FAILS IN SURREALDB 3.2.4:
+SELECT content, vector::distance::knn() AS distance
+FROM memory_chunk
+WHERE embedding <|$limit, 40|> $query_embedding
+ORDER BY distance ASC;
+```
+
+**CURRENT 3.x BEHAVIOR**
+
+SurrealDB 3.2.4 parser grammar **strictly requires unsigned integer literals** for `k` and `ef`. Passing `$limit` causes `Parse error: unexpected token '$'`.
+
+**CORRECT PATTERN**
+
+Sanitize/clamp the limit in application code and interpolate as an integer literal:
+
+```rust
+let limit = limit.clamp(1, 100);
+let query = format!(
+    "SELECT content, vector::distance::knn() AS distance FROM memory_chunk \
+     WHERE embedding <|{limit}, 40|> $query_embedding \
+     ORDER BY distance ASC"
+);
+```
+
+**TESTED BEHAVIOR on 3.2.4.**
+
+---
+
+## 25. Multi-tenant WebSocket session cloning races async SDK session state
+
+**STALE ASSUMPTION**
+
+> Caching cloned `Surreal<Client>` handles in a `HashMap` connection pool provides safe multi-tenant isolation.
+
+**CURRENT 3.x BEHAVIOR**
+
+In concurrent multi-threaded runtimes, queries on cloned WebSocket connections can race the internal asynchronous session replay and sign-in state (`use_ns`, `use_db`, `signin`), leading to cross-tenant session bleed.
+
+**CORRECT PATTERN**
+
+Open a fresh, dedicated WebSocket connection (`Surreal::new::<Ws>(&endpoint).await`) per tenant session:
+
+```rust
+let tenant_db = Surreal::new::<Ws>(&endpoint).await?;
+tenant_db.signin(credentials).await?;
+tenant_db.use_ns(&company.namespace).use_db(&company.database).await?;
+```
+
+**TESTED BEHAVIOR / PRODUCTION HARDENING.**
+
+---
+
+## 26. CLI migration arguments leak passwords in `ps aux`
+
+**STALE PATTERN**
+
+```bash
+surreal sql --endpoint 127.0.0.1:8000 --username root --password "$PASSWORD"
+```
+
+exposes credentials in Linux `/proc/<pid>/cmdline` and `ps aux`.
+
+**CURRENT PATTERN**
+
+Execute schema migrations via SurrealDB's HTTP SQL REST endpoint (`POST /sql` with `Authorization: Basic <base64>` header, `surreal-ns`, and `surreal-db`).
+
+**SECURITY HARDENING RULE.**
+
+---
+
+## 27. Deterministic composite record keys prevent counter race conditions
+
+**RACE-PRONE**
+
+```surql
+SELECT turn_index FROM conversation_memory WHERE session_id = $session_id ORDER BY turn_index DESC LIMIT 1;
+CREATE conversation_memory CONTENT { ... };
+```
+
+Collides and drops records under concurrent agent turns or client retries.
+
+**CORRECT PATTERN**
+
+Deterministic record keys using SHA-256 of session ID and a caller-tracked turn counter:
+
+```rust
+let digest = Sha256::digest(session_id.as_bytes());
+let record_id = format!("{digest:x}_{turn_index}");
+// UPSERT type::record('conversation_memory', $rid) CONTENT { ... }
+```
+
+**TESTED BEHAVIOR on 3.2.4.**

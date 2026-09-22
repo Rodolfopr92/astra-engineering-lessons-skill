@@ -228,13 +228,49 @@ An application preflight such as `SELECT → if absent → INSERT` is not a subs
 
 ### PROJECT CONVENTION
 
-Astra uses a control database plus isolated tenant namespace/database sessions. Cloned clients select the target namespace/database for each tenant.
+Astra uses a control database plus isolated tenant namespace/database sessions. Each company receives a dedicated namespace (e.g. `astra_company_<slug>`) and database (`operations`).
 
-That architecture provides a strong silo boundary for Astra, but it is not a universal SurrealDB rule. Other systems may correctly use row-level scoping, separate clusters, or another tenancy model.
+### CRITICAL CONCURRENCY PITFALL: Do Not Share Cloned WebSocket Handles Across Concurrent Tenants
+
+While the SurrealDB 3.0+ Rust SDK documents `Surreal<C>::clone()` as creating an independent logical session, in high-concurrency multi-threaded runtimes (e.g. async web servers or bot workers), caching cloned `Surreal<Client>` handles in an in-memory `HashMap` can race the SDK's internal asynchronous session replay and sign-in state (`use_ns`, `use_db`, `signin`). 
+
+Under concurrent multi-tenant traffic, this can lead to session bleeding or queries executing under the wrong tenant context!
+
+**TESTED HARDENING**:
+Open a fresh dedicated WebSocket connection (`Surreal::new::<Ws>(&endpoint).await`) per tenant session rather than caching and sharing cloned handles across worker threads:
+
+```rust
+pub async fn get_tenant_session(
+    endpoint: &str,
+    namespace: &str,
+    database: &str,
+    credentials: &Credentials,
+) -> Result<Surreal<Client>, String> {
+    // Open a fresh WebSocket for every returned session. Cloning a previously
+    // scoped SurrealDB 3.2.4 handle can race the SDK's asynchronous session
+    // replay when the clone's first request is a plain query.
+    let tenant_db = Surreal::new::<Ws>(endpoint)
+        .await
+        .map_err(|e| format!("connection error: {e}"))?;
+
+    tenant_db
+        .signin(credentials.clone())
+        .await
+        .map_err(|e| format!("auth error: {e}"))?;
+
+    tenant_db
+        .use_ns(namespace)
+        .use_db(database)
+        .await
+        .map_err(|e| format!("scope error: {e}"))?;
+
+    Ok(tenant_db)
+}
+```
 
 The reusable lesson is:
 
-> Test the tenancy boundary you actually claim, against the real connection/session mechanism you actually deploy.
+> Test the tenancy boundary you actually claim, against the real connection/session mechanism you actually deploy under concurrent load.
 
 ---
 

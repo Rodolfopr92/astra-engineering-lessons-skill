@@ -185,11 +185,25 @@ FULLTEXT ANALYZER app_text BM25
 
 Official: https://surrealdb.com/docs/reference/query-language/statements/define/overview
 
-### Hybrid search
+### Hybrid search & HNSW parameter rule
 
 Current 3.x supports BM25 full-text, HNSW KNN vector search, `vector::distance::knn()`, and RRF fusion through `search::rrf()`.
 
+**Critical Pitfall**: In SurrealDB 3.2.4, `<|k, ef|>` strictly requires **unsigned integer literals**. Passing query parameters like `<|$limit, 40|>` throws a runtime parse error. Clamp the limit in Rust and interpolate it as a literal (`<|{limit}, 40|>`).
+
 Official: https://surrealdb.com/docs/reference/query-language/functions/database-functions/search
+
+### Multi-tenant WebSocket session isolation
+
+Do not share or cache cloned `Surreal<Ws>` connections across threads in multi-tenant environments. In SurrealDB 3.2.4, concurrent queries on cloned connections race the SDK's internal authentication replay. Open a fresh dedicated WebSocket connection (`Surreal::new::<Ws>(&endpoint).await`) per tenant session.
+
+### Migration credential security
+
+Avoid running schema migrations with `surreal sql --password ...`, which exposes root credentials in `ps aux` and `/proc/<pid>/cmdline`. Execute migrations over SurrealDB's HTTP REST endpoint (`POST /sql` with HTTP Basic Auth headers).
+
+### Deterministic composite record keys
+
+Avoid auto-increment `SELECT turn_index ... ORDER BY turn_index DESC` queries for hot event streams or conversational memory, which race and collide under concurrent turns. Generate deterministic record keys with SHA-256 (`format!("{digest:x}_{turn_index}")`) and mutate with `UPSERT type::record(...)`.
 
 ### Changefeed vs historical versioning
 

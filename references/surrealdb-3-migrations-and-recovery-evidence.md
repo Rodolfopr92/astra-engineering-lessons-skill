@@ -178,7 +178,67 @@ This is a **GENERAL STATE-MODELING PATTERN**, not a SurrealDB API requirement.
 
 ---
 
-## 8. Out of scope: choosing SurrealDB's architectural authority role
+## 8. Protect administrative credentials during migrations (`argv` vs HTTP API)
+
+Running database migrations or bootstrap scripts via CLI argument passing:
+
+```bash
+# ❌ VULNERABLE: Exposes root password in plaintext to all local processes
+surreal sql --endpoint http://127.0.0.1:8000 --username root --password "$PASSWORD"
+```
+
+creates a high-severity security exposure: any unprivileged local user or process can inspect `/proc/<pid>/cmdline` or `ps aux` and read the plaintext root credentials.
+
+**Hardened pattern**:
+Execute migrations over SurrealDB's HTTP REST endpoint (`POST /sql`) with HTTP Basic Auth headers:
+
+```python
+import base64
+import urllib.request
+import json
+
+auth = base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
+req = urllib.request.Request(
+    f"{endpoint}/sql",
+    data=surql_bytes,
+    headers={
+        "Authorization": f"Basic {auth}",
+        "Content-Type": "text/plain",
+        "Accept": "application/json",
+        "surreal-ns": namespace,
+        "surreal-db": database,
+    },
+    method="POST",
+)
+with urllib.request.urlopen(req, timeout=300) as resp:
+    statements = json.load(resp)
+    for index, stmt in enumerate(statements, start=1):
+        if stmt.get("status") != "OK":
+            raise RuntimeError(f"Statement {index} failed: {stmt.get('detail')}")
+```
+
+**SECURITY HARDENING RULE + TESTED BEHAVIOR (Astra deployment hardening).**
+
+---
+
+## 9. Multi-tenant schema lifecycle separation
+
+In multi-tenant systems, avoid treating the database as one monolithic schema file. Separate the architecture into two distinct lifecycles:
+
+1. **Global Control Plane Schema (`control.surql`)**:
+   - Manages tenant registration, user accounts, audit ledgers, and capability flags.
+   - Applied once at system startup / deployment.
+2. **Tenant-Local Schema Template (`tenant_schema.surql`)**:
+   - Manages tenant-specific tables, vector embeddings (`memory_chunk` with HNSW indexes), fulltext analyzers (`BM25`), and conversational memory.
+   - Applied atomically during tenant provisioning (`DEFINE NAMESPACE` -> provision credentials -> apply tenant schema).
+
+This ensures every newly provisioned tenant namespace is fully SCHEMAFULL and indexed from its very first transaction, without requiring ad-hoc table creation.
+
+**CASE-STUDY EVIDENCE (Astra multi-tenant cognitive memory architecture).**
+
+---
+
+## 10. Out of scope: choosing SurrealDB's architectural authority role
 
 This reference deliberately does not answer questions such as:
 
