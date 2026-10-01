@@ -73,6 +73,7 @@ GitHub Actions, 2026-10-01:
 | A row containing intrinsic `id` decodes into `RecordId`, while the same row does not decode into a struct declaring `id: String` | TESTED BEHAVIOR | Reproducer runs 34691471041 and 34691656259, `intrinsic_id_is_record_id_not_string` |
 | `surrealdb = "=3.2.4"` alone does not pin `surrealdb-core` / `-types` / `-types-derive`; since 2026-09-24 a fresh resolution selects 3.3.0 for them | TESTED BEHAVIOR | `cargo generate-lockfile` on the unpinned reproducer manifest, 2026-10-01; crates.io publish dates |
 | Pinning those three crates `=3.2.4` next to the SDK resolves the whole family to 3.2.4 | TESTED BEHAVIOR | `reproducers/surrealdb-3.2.4/Cargo.lock`; local runs 2026-10-01 and CI run 36897934223 |
+| `db.select()` requires `SurrealValue`; domain types deriving only Serde must select into `Option<serde_json::Value>` | VERIFIED API + CASE-STUDY EVIDENCE | [Rust SDK docs](https://docs.rs/surrealdb/3.2.4/surrealdb/struct.Surreal.html#method.select); Astra contract gateway |
 
 ---
 
@@ -92,6 +93,7 @@ GitHub Actions, 2026-10-01:
 | A `TYPE datetime` field refuses a JSON timestamp string instead of storing it | TESTED BEHAVIOR | CLI 3.2.4; same reproducer (SDK `.create().content()` path), local runs 2026-10-01 and CI run 36897934223 |
 | `UPSERT … MERGE` keeps fields absent from the payload; `UPSERT … CONTENT` replaces the record | TESTED BEHAVIOR | Reproducer `upsert_merge_keeps_absent_fields_while_content_replaces_the_record`, local runs 2026-10-01 and CI run 36897934223 |
 | A lookup ordering by an unselected field shipped and failed on every call without surfacing the error | CASE-STUDY EVIDENCE | Astra message-log lookup, found in review, 2026-09 |
+| Escaping line-continuation backslashes in multi-line query strings (`\\`) causes `Parse error: Invalid token '\'`; single `\` or multi-line strings must be used | CASE-STUDY EVIDENCE | Astra contract gateway live queries |
 
 ---
 
@@ -169,6 +171,15 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 
 ---
 
+## Multi-tenancy / session isolation
+
+| Claim | Status | Claim-level evidence |
+|---|---|---|
+| Sharing cloned `Surreal<Ws>` handles across concurrent tasks races internal SDK authentication replay | TESTED BEHAVIOR | Astra concurrent WebSocket tenant worker tests |
+| Multi-tenant integration tests on shared servers collide when using static tenant slugs; tests require dynamic unique slugs | CASE-STUDY EVIDENCE | Astra multi-tenant integration test suite (`support::unique`) |
+
+---
+
 ## Build / verification state
 
 | Claim | Status | Claim-level evidence |
@@ -177,6 +188,9 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 | The same event automatically proves application source failure | FALSE | Infrastructure may terminate first |
 | `BLOCKED / INDETERMINATE` is a valid evidence state | GENERAL EVIDENCE RULE | Reproducibility discipline |
 | Standard GitHub-hosted Actions runners are free for public repositories | VERIFIED API | [GitHub Actions billing](https://docs.github.com/en/actions/concepts/billing-and-usage) |
+| Cargo test filter matches test names by substring; tests without matching prefix silently skip and exit code 0 | CASE-STUDY EVIDENCE | Astra contract gateway integration tests (`live_tests` filter) |
+| Brittle single-line regex assertions in verification scripts break when `cargo fmt` reflows code into multi-line formatting | CASE-STUDY EVIDENCE | Astra pre-commit / test verification harness |
+| `#[serde(default)]` does not omit fields during serialization; missing `skip_serializing_if` emits empty values altering cryptographic provenance digests | CASE-STUDY EVIDENCE | Astra audited contract event provenance hashing |
 
 ---
 

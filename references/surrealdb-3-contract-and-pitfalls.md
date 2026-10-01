@@ -272,6 +272,26 @@ The reusable lesson is:
 
 > Test the tenancy boundary you actually claim, against the real connection/session mechanism you actually deploy under concurrent load.
 
+### Multi-Tenant Integration Tests: Shared Server Namespace Collisions on Static Slugs
+
+When executing integration tests against a shared test server, hardcoding static tenant slugs (such as `astra_company_acme` or `company_acme`) creates cross-test race conditions and state leakage:
+
+1. Parallel tests concurrently run `DEFINE NAMESPACE` and table definition migrations on the same namespace.
+2. An aborted test leaves state behind, causing unique index conflicts in subsequent runs.
+3. Tests asserting clean-state or count invariants fail non-deterministically.
+
+**TESTED ISOLATION PATTERN**:
+In test fixtures, always generate process-unique tenant slugs:
+
+```rust
+let test_slug = support::unique("cr_acme");
+let test_ns = format!("astra_company_{test_slug}");
+```
+
+Where `support::unique(prefix)` appends an atomic counter and timestamp. Ensure tests initialize and execute strictly within their unique namespace, preventing test pollution and race conditions across concurrent runners.
+
+**CASE-STUDY EVIDENCE.**
+
 ---
 
 ## 8. Real SurrealKV Restart Testing

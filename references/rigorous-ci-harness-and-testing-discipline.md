@@ -273,3 +273,119 @@ model says it should work
 `BLOCKED / INDETERMINATE` is not a rung on the ladder. It means the attempted rung was not reached.
 
 Not every change needs the top rung. But the strength of the claim should not exceed the strength of the evidence.
+
+---
+
+## 11. Cargo Test Substring Filter Trap & Silent Test Omission
+
+When running filtered test suites (such as live database integration tests gated with `#[ignore]`):
+
+```bash
+cargo test --locked live_tests -- --ignored
+```
+
+Cargo filters tests by **substring matching** against the test name, not by attribute or directory. If a developer or AI adds a new test named:
+
+```rust
+#[tokio::test]
+#[ignore]
+async fn live_contract_gateway_integration() { ... }
+```
+
+The filter `live_tests` will **not** match `live_contract_gateway_integration`. Cargo outputs:
+
+```text
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Cargo exits with status `0` (success). The CI job or local developer observes a green test run, completely unaware that **zero tests were executed**.
+
+### Rules for Filtered Suites
+
+1. **Enforce naming conventions**: If a filter is `live_tests`, all corresponding tests must begin with `live_tests_` (e.g. `live_tests_contract_gateway_integration`).
+2. **Explicit targets**: Prefer targeting tests by test binary or file (`cargo test --test live_tests -- --ignored`) rather than substring matching where feasible.
+3. **Assert non-zero test execution**: Test runner scripts and CI steps should parse output or assert that passed test count is greater than zero (`grep -q "[1-9][0-9]* passed"`).
+
+**CASE-STUDY EVIDENCE.**
+
+---
+
+## 12. Brittle Regex Verification Tools vs Formatter (`rustfmt`) Code Reflow
+
+Static check scripts or repo linter harnesses often verify idioms using regular expressions over source code.
+
+For example, checking a constructor pattern with a single-line regex:
+
+```python
+re.search(r"Some\(\((.+?), (.+?)\)\)", content)
+```
+
+Running `cargo fmt` will reflow multi-argument tuples, long argument lists, or trailing commas across multiple lines:
+
+```rust
+Some((
+    contract_slug,
+    verification_hash,
+))
+```
+
+The single-line regex immediately fails, even though the Rust source is syntactically standard and functionally identical.
+
+### Hardened Patterns
+
+- Do not use whitespace-sensitive or single-line regular expressions to validate Rust syntax.
+- Use multiline-aware, whitespace-tolerant regex patterns:
+  ```python
+  re.search(r"Some\s*\(\s*\(\s*(.+?)\s*,\s*(.+?)\s*,?\s*\)\s*\)", content, re.DOTALL)
+  ```
+- Where AST-level semantic verification is needed, use Rust compiler lints or AST parsers (`syn`) rather than textual regex matching.
+
+**CASE-STUDY EVIDENCE.**
+
+---
+
+## 13. Audited Provenance Structs & Serde Serialization Default Trap
+
+When data structures participate in cryptographic provenance chains, audit logs, or content hashing (e.g. SHA-256 over serialized canonical records):
+
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct ContractEvent {
+    pub contract_id: String,
+    pub event_type: String,
+    #[serde(default)]
+    pub notes: String,
+}
+```
+
+Adding `#[serde(default)]` makes the field optional during **deserialization** (reading older JSON records that omit `"notes"`).
+
+However, `#[serde(default)]` has **no effect on serialization**. When serializing a struct where `notes` is empty (`""`):
+
+```json
+{"contract_id":"123","event_type":"verified","notes":""}
+```
+
+The emitted JSON includes `"notes": ""`, whereas historical records serialized without the field entirely:
+
+```json
+{"contract_id":"123","event_type":"verified"}
+```
+
+This difference alters the SHA-256 digest, breaking historical verification, hash chains, and replay checks.
+
+### Prevention
+
+1. **Pair `#[serde(default)]` with `skip_serializing_if`**:
+   ```rust
+   #[serde(default, skip_serializing_if = "String::is_empty")]
+   pub notes: String,
+   ```
+   Or for `Option<T>`:
+   ```rust
+   #[serde(default, skip_serializing_if = "Option::is_none")]
+   pub notes: Option<String>,
+   ```
+2. **Provenance canonicalization**: Before computing cryptographic digests, run serialization through an explicit canonicalization routine that strips default/absent fields.
+
+**CASE-STUDY EVIDENCE.**

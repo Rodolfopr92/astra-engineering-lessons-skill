@@ -146,6 +146,27 @@ DELPHIS uses this boundary to avoid pretending its existing Serde domain types i
 
 **CASE-STUDY EVIDENCE.**
 
+### 4.1 `db.select()` requires `SurrealValue` — Serde-only models require `Option<serde_json::Value>`
+
+AI coding assistants frequently write:
+
+```rust
+// ❌ COMPILE ERROR if MyDomainModel only derives serde::Deserialize:
+// "the trait bound `MyDomainModel: SurrealValue` is not satisfied"
+let record: Option<MyDomainModel> = db.select(("contract", id)).await?;
+```
+
+In the SurrealDB 3.2.4 Rust SDK, `db.select((table, id))`'s return type bound strictly requires `R: SurrealValue`. It does not accept arbitrary types that only implement `serde::de::DeserializeOwned`.
+
+When domain types intentionally rely exclusively on Serde, select into `Option<serde_json::Value>` (or `Option<surrealdb::types::Value>`) and deserialize explicitly:
+
+```rust
+let raw: Option<serde_json::Value> = db.select(("contract", id.to_string())).await?;
+let record: Option<MyDomainModel> = raw.map(serde_json::from_value).transpose()?;
+```
+
+**CASE-STUDY EVIDENCE + VERIFIED API.**
+
 General rule:
 
 > Make the conversion boundary explicit. Do not accidentally mix native SurrealDB values and JSON/Serde assumptions.
@@ -415,7 +436,44 @@ Use `MERGE` when several partial writers update one deterministic record: repeat
 
 ---
 
-## 16. Scope limits
+## 16. Multi-line SurrealQL strings in Rust: backslash escaping trap
+
+When formatting a long SurrealQL query string across multiple lines in Rust, writing an escaped backslash (`\\`) to continue the line:
+
+```rust
+// ❌ RUNTIME PARSE ERROR in SurrealDB 3.2.4:
+// Parse error: Invalid token '\'
+let sql = "SELECT * FROM contract \
+    WHERE status = $status \\
+    ORDER BY created_at DESC;";
+```
+
+In Rust string literals, `\\` evaluates to a literal ASCII backslash `\` sent to the SurrealQL parser. Unlike bash or C preprocessors, SurrealQL has no backslash line-continuation syntax and rejects `\` with an `Invalid token '\'` parse error.
+
+In Rust, a single unescaped backslash (`\`) at the end of a line continuation consumes leading whitespace and newlines without inserting any character into the string:
+
+```rust
+// ✅ CORRECT: single backslash trims Rust whitespace; no backslash reaches SurrealDB
+let sql = "SELECT * FROM contract \
+    WHERE status = $status \
+    ORDER BY created_at DESC;";
+```
+
+Alternatively, use multi-line string literals with explicit newlines:
+
+```rust
+let sql = "
+    SELECT * FROM contract
+    WHERE status = $status
+    ORDER BY created_at DESC;
+";
+```
+
+**CASE-STUDY EVIDENCE.**
+
+---
+
+## 17. Scope limits
 
 This document does not claim:
 

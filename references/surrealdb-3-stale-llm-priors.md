@@ -603,3 +603,60 @@ let record_id = format!("{digest:x}_{turn_index}");
 ```
 
 **TESTED BEHAVIOR on 3.2.4.**
+
+---
+
+## 28. Multi-line SurrealQL strings in Rust: backslash escaping causes parse errors
+
+**STALE LLM MISTAKE**
+
+Escaping backslashes (`\\`) at line endings in Rust strings:
+
+```rust
+// ❌ FAILS IN SURREALDB 3.2.4:
+// Parse error: Invalid token '\'
+let sql = "SELECT * FROM contract \
+    WHERE status = $status \\
+    ORDER BY created_at DESC;";
+```
+
+**CURRENT 3.x BEHAVIOR**
+
+SurrealQL does not recognize `\` as a line-continuation token. Rust interprets `\\` as a literal ASCII backslash, transmitting `\` directly into the query payload.
+
+**CORRECT PATTERN**
+
+Use a single trailing backslash `\` in Rust (which strips line breaks and leading whitespace without emitting characters), or format as a standard multi-line string:
+
+```rust
+// ✅ Single backslash continues the string in Rust cleanly:
+let sql = "SELECT * FROM contract \
+    WHERE status = $status \
+    ORDER BY created_at DESC;";
+```
+
+**CASE-STUDY EVIDENCE.**
+
+---
+
+## 29. `db.select()` requires `SurrealValue` bound
+
+**STALE ASSUMPTION**
+
+> Types implementing only `serde::Deserialize` can be selected directly using `db.select::<Option<T>>((table, id))`.
+
+**CURRENT 3.x BEHAVIOR**
+
+The SDK method `db.select((table, id))`'s return type bound strictly requires `R: SurrealValue`. Types implementing only Serde fail compilation with:
+`the trait bound T: SurrealValue is not satisfied`.
+
+**CORRECT PATTERN**
+
+For domain models that deliberately derive only Serde, select into `Option<serde_json::Value>` and deserialize explicitly:
+
+```rust
+let raw: Option<serde_json::Value> = db.select(("contract", id.to_string())).await?;
+let record: Option<MyDomainModel> = raw.map(serde_json::from_value).transpose()?;
+```
+
+**VERIFIED API + CASE-STUDY EVIDENCE.**

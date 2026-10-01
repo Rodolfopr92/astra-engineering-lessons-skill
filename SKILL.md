@@ -307,6 +307,18 @@ Official: https://surrealdb.com/docs/reference/rust/methods/new
 
 Sequential application writes are not one all-or-nothing database transaction. When the required invariant is atomic multi-record mutation, use a real transaction and prove rollback with failure injection.
 
+### Multi-line SurrealQL strings in Rust
+
+Do not use escaped backslashes (`\\`) to split query strings across lines in Rust. SurrealQL has no backslash line continuation and errors with `Parse error: Invalid token '\'`. Use a single trailing backslash (`\`) to trim Rust whitespace, or use multi-line strings.
+
+### `db.select()` trait boundary
+
+`db.select((table, id))` requires `R: SurrealValue`. For domain types implementing only Serde, select into `Option<serde_json::Value>` and deserialize explicitly via `serde_json::from_value`.
+
+### Multi-tenant test isolation on shared servers
+
+Avoid hardcoded static tenant slugs (e.g. `astra_company_acme`) in integration tests against shared SurrealDB instances. Use dynamic unique slugs (e.g. `support::unique("cr_acme")`) to prevent cross-test namespace clobbering and state bleed.
+
 ## 5. Tauri 2.11.5 path contract
 
 Tauri 2.11.5 exposes application-scoped path APIs including:
@@ -336,6 +348,9 @@ Official: https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html
 12. **Do not use this skill to make architecture decisions.**
 13. **Build test schemas from the production migration.** An undefined table is schemaless and accepts writes that production refuses.
 14. **Never treat a query error as an empty result.** A parse error fails every statement in the request.
+15. **Filter test suites with naming discipline and execution assertions.** Cargo test filters match by substring; a test omitting the prefix silently skips, reporting a green test run with 0 tests executed.
+16. **Verification tools must tolerate `rustfmt` formatting.** Do not use brittle single-line regexes to validate Rust code patterns that `cargo fmt` reflows into multi-line layouts.
+17. **`#[serde(default)]` does not skip serialization.** In audited provenance structs, pair `#[serde(default)]` with `skip_serializing_if` to prevent default fields from polluting JSON and corrupting historical cryptographic hashes.
 
 ## 7. Reproducers are first-class evidence
 
