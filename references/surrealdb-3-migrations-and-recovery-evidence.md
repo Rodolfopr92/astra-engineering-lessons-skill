@@ -2,13 +2,14 @@
 
 **Primary baseline:** SurrealDB 3.2.x + Rust  
 **Case-study evidence:** ARGOS, Omphalos, Saturno, DELPHIS  
-**Last verified:** 2026-09-12
+**Last verified:** 2026-09-12; sections 10–11 on 2026-10-01 (reproducer `tests/schema_and_query_shapes.rs`)
 
 This reference is intentionally narrow. It covers technical patterns for evolving a SurrealDB schema and proving persistence/recovery claims. It does **not** decide whether SurrealDB should be a system of record, a projection, a cache, or one store among several. Those are project-planning and architecture decisions.
 
 ## Evidence labels
 
 - **VERIFIED API** — current official SurrealDB API.
+- **TESTED BEHAVIOR** — reproduced against 3.2.4 by this repository's reproducers.
 - **CASE-STUDY EVIDENCE** — implemented in one or more proving repositories.
 - **GENERAL TESTING RULE** — evidence discipline rather than a SurrealDB requirement.
 
@@ -238,7 +239,62 @@ This ensures every newly provisioned tenant namespace is fully SCHEMAFULL and in
 
 ---
 
-## 10. Out of scope: choosing SurrealDB's architectural authority role
+## 10. A new field on a SCHEMAFULL table needs a migration, and tests must run that migration
+
+**TESTED BEHAVIOR** (3.2.4). Reproducer: `schemafull_refuses_an_undefined_top_level_field_an_undefined_table_hides_it`.
+
+On a SCHEMAFULL table, writing a top-level field that nobody defined fails:
+
+```text
+Found field 'language_preference', but no such field exists for table 'user'
+```
+
+The trap is the test fixture. A test that creates rows in a table it never defined gets a **schemaless** table. The same write passes there, and the suite stays green while production refuses every write.
+
+```surql
+-- migration (idempotent)
+DEFINE FIELD IF NOT EXISTS language_preference ON TABLE user TYPE option<string>
+    ASSERT $value = NONE OR $value IN ['pt-br', 'en'];
+```
+
+Rules:
+
+1. Every field the code writes on a SCHEMAFULL table appears in a migration.
+2. Integration tests build their tables from the production migration script itself: read the script, or the relevant section of it. Never use hand-written `DEFINE`s or bare `CREATE`s.
+3. A regression test for a schema fix must fail when the migration line is removed.
+
+**CASE-STUDY EVIDENCE.** A proving repository added a per-user language preference in code.
+
+- Its tests created users in an undefined table, and they passed.
+- In production, every save failed on the SCHEMAFULL `user` table.
+- The fix was the migration line, plus a live test that builds the table from the migration script.
+
+---
+
+## 11. SCHEMALESS tables still enforce the fields they define
+
+**TESTED BEHAVIOR** (3.2.4). Reproducer: `schemaless_tables_still_enforce_the_fields_they_define`.
+
+`SCHEMALESS` means "unknown fields are accepted", not "nothing is checked". `TYPE` and `ASSERT` still apply to every field the table defines. That makes it a cheap way to constrain the one value that must be right on an otherwise open table:
+
+```surql
+DEFINE TABLE shipment SCHEMALESS;
+DEFINE FIELD carrier  ON TABLE shipment TYPE string ASSERT $value IN ['correios'];
+DEFINE FIELD language ON TABLE shipment TYPE option<string>
+    ASSERT $value = NONE OR $value IN ['pt-br', 'en'];
+```
+
+`option<…>` plus `$value = NONE OR …` is the optional-enumeration pattern: an absent value is accepted, and a value outside the list is refused. The error names the rule, normalized to `INSIDE`:
+
+```text
+Found 'jadlog' for field `carrier`, with record `s:bad`, but field must conform to: $value INSIDE ['correios']
+```
+
+**PROJECT CONVENTION:** when code builds the `DEFINE` statement, generate the list from the code's enum, so there is one source of truth. When the migration is a hand-written script, keep the two in sync with a test.
+
+---
+
+## 12. Out of scope: choosing SurrealDB's architectural authority role
 
 This reference deliberately does not answer questions such as:
 

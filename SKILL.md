@@ -17,6 +17,7 @@ Its job is technical: correct stale model knowledge about what the current stack
 - Official SDK minimum Rust version: **1.89**
 - Tauri documentation baseline: **2.11.5** (`PathResolver` application-data APIs)
 - Last full verification pass: **2026-09-12**
+- Last partial verification: **2026-10-01** (schema and query-shape reproducers; engine crate pinning)
 - Routine reverification interval: **90 days maximum**
 
 ## 1. Hard version-decay guard
@@ -24,6 +25,8 @@ Its job is technical: correct stale model knowledge about what the current stack
 This rule overrides every example in this skill.
 
 Before applying a version-sensitive claim, inspect the target repository's lockfile/manifests and identify the actual SurrealDB server/engine, Rust SDK, Rust toolchain, connection mode, and Tauri version where relevant.
+
+For an embedded engine, the engine version is the resolved `surrealdb-core` in `Cargo.lock`, not the `surrealdb` line in `Cargo.toml`. See [An exact SDK pin does not pin the engine](#an-exact-sdk-pin-does-not-pin-the-engine).
 
 If the target uses a SurrealDB server/engine or Rust SDK version **other than 3.2.4**, or a Tauri-sensitive claim targets a Tauri version **other than 2.11.5**:
 
@@ -125,6 +128,21 @@ Official:
 - https://surrealdb.com/docs/reference/rust/embedding
 - https://docs.rs/crate/surrealdb/3.2.4
 
+### An exact SDK pin does not pin the engine
+
+`surrealdb = "=3.2.4"` pins only the SDK crate. The SDK reaches `surrealdb-core`, `surrealdb-types` and `surrealdb-types-derive` through caret requirements. Since 3.3.0 was published (2026-09-24), a resolution without a lockfile builds SDK 3.2.4 on engine 3.3.0, under a 3.2.4 label. For `Mem` and `SurrealKv`, `surrealdb-core` *is* the database. For a remote connection, check the server's version as well.
+
+```toml
+surrealdb = { version = "=3.2.4", default-features = false, features = ["kv-surrealkv"] }
+surrealdb-core = { version = "=3.2.4", default-features = false }
+surrealdb-types = "=3.2.4"
+surrealdb-types-derive = "=3.2.4"
+```
+
+Commit `Cargo.lock`, and run CI with `--locked`.
+
+**TESTED BEHAVIOR** (dependency resolution, 2026-10-01). See the [ledger](references/verification-status.md).
+
 ### SCHEMAFULL nested data
 
 ```surql
@@ -138,6 +156,32 @@ DEFINE FIELD shipping.city ON TABLE order TYPE string;
 Current 3.x errors on undeclared nested fields in a SCHEMAFULL object unless the relevant object-containing field is intentionally `FLEXIBLE`.
 
 Official: https://surrealdb.com/docs/reference/query-language/statements/define/field
+
+### SCHEMAFULL top-level fields and permissive fixtures
+
+A SCHEMAFULL table refuses a top-level field that nobody defined:
+
+```text
+Found field 'language_preference', but no such field exists for table 'user'
+```
+
+A test that creates rows in a table it never defined gets a schemaless table. The same write passes there, so the test proves nothing about production.
+
+- Add every new field through the migration.
+- Build test tables from the production migration script.
+
+**TESTED BEHAVIOR.** Reproducer: `schemafull_refuses_an_undefined_top_level_field_an_undefined_table_hides_it`. Details: [migrations §10](references/surrealdb-3-migrations-and-recovery-evidence.md).
+
+### SCHEMALESS tables still enforce the fields they define
+
+SCHEMALESS accepts unknown fields, but it still applies `TYPE` and `ASSERT` to the fields it defines. An optional enumeration looks like this:
+
+```surql
+DEFINE FIELD language ON TABLE user TYPE option<string>
+    ASSERT $value = NONE OR $value IN ['pt-br', 'en'];
+```
+
+**TESTED BEHAVIOR.** Reproducer: `schemaless_tables_still_enforce_the_fields_they_define`.
 
 ### Query response errors
 
@@ -156,6 +200,20 @@ Outer `Ok` does not prove every statement succeeded.
 
 Official: https://surrealdb.com/docs/reference/rust/concepts/error-handling
 
+### ORDER BY needs its field in the projection
+
+```surql
+SELECT text FROM log ORDER BY created_at DESC;              -- parse error
+SELECT text, created_at FROM log ORDER BY created_at DESC;  -- works
+```
+
+The error, ``Missing order idiom `created_at` in statement selection``, is raised when the request is parsed.
+
+- The whole request fails, and none of its statements run, not even valid ones before the bad one.
+- Code that treats an error as "no rows" goes silent for good.
+
+**TESTED BEHAVIOR.** Reproducer: `order_by_needs_its_field_selected_and_the_parse_error_fails_the_whole_request`.
+
 ### `NONE` vs `NULL`
 
 ```surql
@@ -164,6 +222,27 @@ SET field = NULL; -- stored empty value
 ```
 
 Do not assume JSON `null` means SurrealQL `NONE`.
+
+### JSON timestamps are strings
+
+JSON has no datetime type. A `chrono::DateTime` passed through `serde_json::to_value` is stored as a **string**. A string never matches `created_at > d'…'`, so those rows silently drop out of the result.
+
+Three fixes:
+
+- Define the field `TYPE datetime`. The JSON write is then refused loudly.
+- Write timestamps in SurrealQL (`time::now()`).
+- Cast text that is already stored: `<datetime> created_at > d'…'`.
+
+**TESTED BEHAVIOR.** Reproducer: `json_timestamps_are_strings_and_drop_out_of_datetime_comparisons`.
+
+### `UPSERT … MERGE` vs `UPSERT … CONTENT`
+
+- `MERGE` keeps the fields the payload does not mention.
+- `CONTENT` replaces the whole record.
+
+Partial writers to one deterministic record need `MERGE`: repeated readings of one document, status patches, webhooks.
+
+**TESTED BEHAVIOR.** Reproducer: `upsert_merge_keeps_absent_fields_while_content_replaces_the_record`.
 
 ### Relation tables
 
@@ -255,6 +334,8 @@ Official: https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html
 10. **A resource-killed build is neither pass nor application compile failure.** Report `BLOCKED / INDETERMINATE` until meaningful diagnostics exist.
 11. **The strength of a claim must not exceed the strength of its evidence.**
 12. **Do not use this skill to make architecture decisions.**
+13. **Build test schemas from the production migration.** An undefined table is schemaless and accepts writes that production refuses.
+14. **Never treat a query error as an empty result.** A parse error fails every statement in the request.
 
 ## 7. Reproducers are first-class evidence
 
@@ -262,7 +343,7 @@ The repository contains `reproducers/` for small executable checks of high-value
 
 A reproducer should be:
 
-- version-pinned;
+- version-pinned, including the engine crates the SDK pulls in, with `Cargo.lock` committed and runs made `--locked`;
 - minimal;
 - fast enough to run routinely;
 - linked from the claim it verifies;
@@ -278,9 +359,9 @@ A reproducer that has not run successfully is **not** `TESTED BEHAVIOR`. Record 
 | SurrealDB stale priors | [surrealdb-3-stale-llm-priors.md](references/surrealdb-3-stale-llm-priors.md) | Fast 1.x/2.x → 3.x correction layer. |
 | Core SurrealDB 3.2.4 contract | [surrealdb-3-contract-and-pitfalls.md](references/surrealdb-3-contract-and-pitfalls.md) | RecordId, SurrealValue, atomicity and persistence. |
 | Embedded SurrealKV + Tauri | [embedded-surrealkv-tauri-local-first.md](references/embedded-surrealkv-tauri-local-first.md) | Local handle/lifecycle, Tauri paths, versioning, fresh installs. |
-| Query/value/response boundaries | [surrealdb-3-query-shapes-and-sdk-binding.md](references/surrealdb-3-query-shapes-and-sdk-binding.md) | `.bind()`, `.check()`, `.take_errors()`, NONE/null, RecordId text, transactions. |
+| Query/value/response boundaries | [surrealdb-3-query-shapes-and-sdk-binding.md](references/surrealdb-3-query-shapes-and-sdk-binding.md) | `.bind()`, `.check()`, `.take_errors()`, NONE/null, RecordId text, transactions, ORDER BY projection, JSON timestamps, MERGE vs CONTENT. |
 | Graph/search/changefeeds | [surrealdb-3-graph-search-and-changefeeds.md](references/surrealdb-3-graph-search-and-changefeeds.md) | Relation schema, BM25/HNSW/RRF, changefeeds, VERSION boundary. |
-| Migrations/recovery evidence | [surrealdb-3-migrations-and-recovery-evidence.md](references/surrealdb-3-migrations-and-recovery-evidence.md) | Migration identity/checksums, errors, idempotence vs recovery proof. |
+| Migrations/recovery evidence | [surrealdb-3-migrations-and-recovery-evidence.md](references/surrealdb-3-migrations-and-recovery-evidence.md) | Migration identity/checksums, errors, idempotence vs recovery proof, new SCHEMAFULL fields, SCHEMALESS field checks. |
 | Verification ledger | [verification-status.md](references/verification-status.md) | Claim-level evidence and baseline status. |
 | Reproducers | [reproducers/README.md](reproducers/README.md) | Executable checks and their verification state. |
 | Subprocess sandboxing | [subprocess-sandbox-and-path-containment.md](references/subprocess-sandbox-and-path-containment.md) | Path containment, symlinks, bounded streaming. |

@@ -2,13 +2,14 @@
 
 **Baseline:** SurrealDB 3.2.4 + Rust SDK 3.2.4  
 **Additional case-study baseline:** DELPHIS / ARGOS on SurrealDB 3.2.x  
-**Last verified:** 2026-09-12
+**Last verified:** 2026-09-12; sections 13–15 on 2026-10-01 (reproducer `tests/schema_and_query_shapes.rs`)
 
 This reference focuses on small query/SDK details that are expensive when an AI model guesses from older SurrealDB examples.
 
 ## Evidence labels
 
 - **VERIFIED API** — current official documentation.
+- **TESTED BEHAVIOR** — reproduced against 3.2.4 by this repository's reproducers.
 - **CASE-STUDY EVIDENCE** — behavior observed in a real proving project but not independently reduced by this skill repository yet.
 - **PROJECT CONVENTION** — design choice, not a universal API rule.
 
@@ -302,7 +303,7 @@ Brew & Batch reported useful 3.2.4 observations:
 - ordering/projection combinations required care in exact tested shapes;
 - explicit record casts were useful for dynamic bound record identifiers.
 
-These remain **CASE-STUDY EVIDENCE**.
+These remain **CASE-STUDY EVIDENCE**. One ordering/projection rule has since been reduced and tested: `ORDER BY` needs its field in the projection (section 13).
 
 When a model emits a complex SurrealQL loop, graph mutation, projection, or dynamic record expression:
 
@@ -330,7 +331,91 @@ Do not assume `Decimal` implies a JSON numeric token.
 
 ---
 
-## 13. Scope limits
+## 13. `ORDER BY` needs its field in the projection
+
+**TESTED BEHAVIOR** (3.2.4, `Mem` engine). Reproducer: `order_by_needs_its_field_selected_and_the_parse_error_fails_the_whole_request`.
+
+```surql
+-- refused when the request is parsed
+SELECT text FROM log ORDER BY created_at DESC LIMIT 1;
+-- Parse error: Missing order idiom `created_at` in statement selection
+
+-- accepted
+SELECT text, created_at FROM log ORDER BY created_at DESC LIMIT 1;
+```
+
+Because it is a parse error, it fails the entire request, not one statement.
+
+- The reproducer sends a valid `CREATE` before the bad `SELECT` in one `.query()` call, and the `CREATE` never runs.
+- Handle the failure both as an outer `Err` from `.query().await` and from `.check()`, as the reproducer does.
+
+The dangerous shape is error-tolerant code around a lookup:
+
+```rust
+// Looks harmless. It never returns a row and never logs a thing.
+if let Ok(mut response) = db.query("SELECT text FROM log ORDER BY created_at DESC LIMIT 5").await {
+    let texts: Vec<String> = response.take(0).unwrap_or_default();
+    // ...
+}
+```
+
+The fix:
+
+- Select the ordering field, and ignore it on the Rust side.
+- Surface query errors: log them in production, and fail on them in tests.
+
+**CASE-STUDY EVIDENCE:** a proving repository shipped a message-log lookup with this shape. It failed on every call, and nothing reported the error until a review read the query.
+
+---
+
+## 14. Timestamps written through JSON are strings
+
+**TESTED BEHAVIOR** (3.2.4, `Mem` engine). Reproducer: `json_timestamps_are_strings_and_drop_out_of_datetime_comparisons`.
+
+JSON has no datetime type. This common pattern stores a **string**:
+
+```rust
+#[derive(Serialize)]
+struct MessageLog { text: String, created_at: chrono::DateTime<chrono::Utc> }
+
+let value = serde_json::to_value(&row)?; // created_at becomes a JSON string
+db.create::<Option<serde_json::Value>>("message_log").content(value).await?;
+```
+
+A string never satisfies a datetime comparison, so the row silently drops out:
+
+```surql
+SELECT * FROM message_log WHERE created_at > d'2026-09-30T00:00:00Z';             -- skips the string rows
+SELECT * FROM message_log WHERE <datetime> created_at > d'2026-09-30T00:00:00Z';  -- finds them
+```
+
+Prevention:
+
+1. **Define the field.** With `DEFINE FIELD created_at ON TABLE message_log TYPE datetime;` the JSON write is refused. The error is ``Couldn't coerce value for field `created_at` … Expected `datetime` but found '…'``. The mistake then shows up at write time, not as missing rows.
+2. **Produce the timestamp in SurrealQL** (`time::now()`, or a `d'…'` literal) when a query writes the row.
+3. **Cast data already stored as text** in the query: `<datetime> created_at`.
+
+`type::is_string(created_at)` finds the affected rows.
+
+---
+
+## 15. `UPSERT … MERGE` keeps fields; `UPSERT … CONTENT` replaces the record
+
+**TESTED BEHAVIOR** (3.2.4, `Mem` engine). Reproducer: `upsert_merge_keeps_absent_fields_while_content_replaces_the_record`.
+
+```surql
+UPSERT shipment:a CONTENT { service: 'SEDEX', total: 5170 };
+UPSERT shipment:a MERGE   { verified: true };   -- service and total kept
+
+UPSERT shipment:b CONTENT { service: 'SEDEX', total: 5170 };
+UPSERT shipment:b CONTENT { verified: true };   -- service and total are gone
+```
+
+Use `MERGE` when several partial writers update one deterministic record: repeated readings of the same document, status patches, webhook updates. Use `CONTENT` only when the payload is the complete record.
+
+---
+
+## 16. Scope limits
 
 This document does not claim:
 

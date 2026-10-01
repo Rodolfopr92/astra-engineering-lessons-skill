@@ -34,4 +34,4 @@ jobs:
           cargo --version
 
       - name: Run SurrealDB 3.2.4 reproducers
-        run: cargo test --manifest-path reproducers/surrealdb-3.2.4/Cargo.toml --all-targets
+        run: cargo test --locked --manifest-path reproducers/surrealdb-3.2.4/Cargo.toml --all-targets

@@ -16,11 +16,12 @@ Target:
 
 ```text
 SurrealDB Rust SDK: =3.2.4
+engine crates (surrealdb-core, -types, -types-derive): =3.2.4, Cargo.lock committed
 engine modes: Mem + embedded SurrealKV
-Rust verification toolchain: 1.96.0
+Rust verification toolchain: 1.96.0 (CI)
 ```
 
-Checks:
+Checks in `tests/core_contract.rs`:
 
 - intrinsic `id` decodes as `RecordId`, while a `String` model rejects the same row;
 - statement-level failures can exist inside an outer successful query response;
@@ -28,10 +29,21 @@ Checks:
 - `SurrealKv` selects the embedded engine while the application handle is `Surreal<Db>`;
 - explicit transaction failure does not leave the earlier write committed.
 
+Checks in `tests/schema_and_query_shapes.rs` (added 2026-10-01):
+
+- **The fixture trap.** SCHEMAFULL refuses an undefined top-level field, while a table nobody defined accepts it.
+- **`ORDER BY` projection.** Ordering by a field missing from the projection fails the whole request at parse time.
+- **JSON timestamps.** Timestamps written through `serde_json` are strings. They:
+  - drop out of datetime comparisons;
+  - match after a `<datetime>` cast;
+  - are refused by a `TYPE datetime` field.
+- **`UPSERT` modes.** `MERGE` keeps absent fields, while `CONTENT` replaces the record.
+- **SCHEMALESS checks.** SCHEMALESS tables still enforce `TYPE`/`ASSERT` on the fields they define, including an optional enumeration.
+
 Run:
 
 ```bash
-cargo test --manifest-path reproducers/surrealdb-3.2.4/Cargo.toml
+cargo test --locked --manifest-path reproducers/surrealdb-3.2.4/Cargo.toml --all-targets
 ```
 
 ## Verification history
@@ -59,6 +71,26 @@ result: 5 passed, 0 failed
 This history is kept deliberately. A failed reproducer that exposes a bad test is useful evidence about the harness, but it does not falsify the underlying capability claim.
 
 The workflow `.github/workflows/reproducers.yml` runs on a standard public-repository runner. Public standard GitHub-hosted runners are currently free.
+
+### 2026-10-01: schema and query shapes, engine pinning
+
+Until this pass, the suite pinned only `surrealdb = "=3.2.4"` and had no `Cargo.lock`.
+
+- The SDK depends on `surrealdb-core`, `surrealdb-types` and `surrealdb-types-derive` through caret requirements.
+- 3.3.0 of those crates was published on 2026-09-24.
+- A fresh resolution of the old manifest on 2026-10-01 gave SDK 3.2.4 with core, types and derive 3.3.0.
+
+The 2026-09-12 runs above predate 3.3.0, and caret requirements do not select the 3.3.0 betas, so their evidence stands. The crates are now pinned `=3.2.4`, `Cargo.lock` is committed, and CI runs with `--locked`.
+
+Local verification of the extended suite:
+
+```text
+date: 2026-10-01
+Rust: 1.98.1 (local); CI uses 1.96.0
+resolved: surrealdb, surrealdb-core, surrealdb-types, surrealdb-types-derive = 3.2.4
+cargo test --all-targets:          core_contract 5 passed, schema_and_query_shapes 5 passed
+cargo test --locked --all-targets: 10 passed, 0 failed
+```
 
 ## Cross-version rule
 

@@ -128,7 +128,8 @@ Rules:
 3. avoid copying assertions between fixtures without re-grounding them;
 4. give fixtures stable semantic names;
 5. for complex fixtures, document the few fields the test treats as canonical;
-6. assert representation and semantic value separately when serialization can turn exact decimals into strings.
+6. assert representation and semantic value separately when serialization can turn exact decimals into strings;
+7. build schema fixtures from the production migration. An undefined SurrealDB table is schemaless and accepts writes that the SCHEMAFULL production table refuses ([migrations §10](surrealdb-3-migrations-and-recovery-evidence.md)).
 
 A failing test is evidence of inconsistency, not automatic proof that production code is the faulty side.
 
@@ -170,6 +171,12 @@ cargo build --locked --release
 `cargo audit` already audits the lockfile dependency graph; use the options supported by the installed `cargo-audit` version rather than mechanically adding unrelated Cargo flags from memory.
 
 The reusable lesson is **dependency determinism**, not a ritual command string.
+
+An exact pin on a top-level crate does not pin what that crate depends on.
+
+- The SurrealDB 3.2.4 SDK reaches its engine crates through caret requirements.
+- So, without a lockfile, a resolution made after 2026-09-24 builds SDK 3.2.4 on engine 3.3.0.
+- A test or reproducer labelled with a version must pin the crates that implement the behavior, commit `Cargo.lock`, and run with `--locked`.
 
 ---
 

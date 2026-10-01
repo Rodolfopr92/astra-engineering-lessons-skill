@@ -7,5 +7,11 @@ publish = false
 
 [dependencies]
 surrealdb = { version = "=3.2.4", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
+# The SDK depends on surrealdb-core / -types / -types-derive through caret ranges, so a fresh
+# resolution (no lockfile) pulls 3.3.x under a "3.2.4" label. Pin them, and keep Cargo.lock.
+surrealdb-core = { version = "=3.2.4", default-features = false }
+surrealdb-types = "=3.2.4"
+surrealdb-types-derive = "=3.2.4"
+serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tempfile = "3"

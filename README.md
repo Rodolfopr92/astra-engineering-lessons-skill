@@ -14,6 +14,7 @@ Its purpose is narrow: correct stale model priors, show the current API contract
 | Official SDK minimum Rust | 1.89 |
 | Tauri path/API documentation | 2.11.5 |
 | Last full verification | 2026-09-12 |
+| Last partial verification | 2026-10-01 |
 | Maximum routine reverification interval | 90 days |
 
 The current official SurrealDB Rust docs identify SDK/server **3.2.4** as current. The Tauri path APIs verified for this skill are from **Tauri 2.11.5**.
@@ -59,6 +60,9 @@ Case-study evidence from a different patch/minor version does **not** transfer a
 - `SurrealKv` engine selection vs `Surreal<Db>` application handle;
 - Tauri `app_data_dir()` / `app_local_data_dir()` path APIs;
 - SCHEMAFULL nested objects/arrays and `FLEXIBLE`;
+- SCHEMAFULL top-level fields, permissive test fixtures, and SCHEMALESS field checks;
+- `ORDER BY` projection parse errors, JSON timestamps stored as strings, `UPSERT` `MERGE` vs `CONTENT`;
+- pinning the engine crates behind an exact SDK pin;
 - `.bind()`, `.check()`, `.take_errors()`, structured error kinds;
 - `NONE` vs `NULL` vs JSON `null`;
 - relation tables;
