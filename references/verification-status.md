@@ -51,6 +51,12 @@ Local runs, 2026-10-01:
 - Rust 1.98.1, all four crates resolved to 3.2.4.
 - `cargo test --all-targets` and `cargo test --locked --all-targets` each passed 10 tests: `core_contract` 5 and `schema_and_query_shapes` 5.
 
+GitHub Actions, 2026-10-01:
+
+- Run **36897934223**, exact head **`f029a0a0446661855ce01f9d210ac4c0fbc41890`**.
+- Rust 1.96.0, with `--locked`. The log shows surrealdb, surrealdb-core, surrealdb-types and surrealdb-types-derive compiled at 3.2.4.
+- Result: 10 passed, 0 failed.
+
 ---
 
 ## SurrealDB Rust SDK / type contract
@@ -66,7 +72,7 @@ Local runs, 2026-10-01:
 | `(table, id)` tuple resources remain supported by Rust SDK methods | VERIFIED API | [Working with types](https://surrealdb.com/docs/reference/rust/concepts/working-with-types) |
 | A row containing intrinsic `id` decodes into `RecordId`, while the same row does not decode into a struct declaring `id: String` | TESTED BEHAVIOR | Reproducer runs 34691471041 and 34691656259, `intrinsic_id_is_record_id_not_string` |
 | `surrealdb = "=3.2.4"` alone does not pin `surrealdb-core` / `-types` / `-types-derive`; since 2026-09-24 a fresh resolution selects 3.3.0 for them | TESTED BEHAVIOR | `cargo generate-lockfile` on the unpinned reproducer manifest, 2026-10-01; crates.io publish dates |
-| Pinning those three crates `=3.2.4` next to the SDK resolves the whole family to 3.2.4 | TESTED BEHAVIOR | `reproducers/surrealdb-3.2.4/Cargo.lock`; local runs 2026-10-01 |
+| Pinning those three crates `=3.2.4` next to the SDK resolves the whole family to 3.2.4 | TESTED BEHAVIOR | `reproducers/surrealdb-3.2.4/Cargo.lock`; local runs 2026-10-01 and CI run 36897934223 |
 
 ---
 
@@ -81,10 +87,10 @@ Local runs, 2026-10-01:
 | Durable control flow should prefer structured error kinds over message matching | VERIFIED API | [Rust error handling](https://surrealdb.com/docs/reference/rust/concepts/error-handling) |
 | `<record>$variable` is universally required for bound dynamic records | FALSE / NOT A GENERAL RULE | Brew & Batch observation only; typed `RecordId` and `type::record()` are also supported |
 | UUID-shaped text record IDs may render with backtick delimiters when cast to string | CASE-STUDY EVIDENCE | ARGOS record-identity tests; version-specific transport behavior |
-| `ORDER BY` a field missing from the projection is a parse error (``Missing order idiom `x` in statement selection``) that fails the whole request, so its earlier valid statements do not run | TESTED BEHAVIOR | CLI 3.2.4; reproducer `order_by_needs_its_field_selected_and_the_parse_error_fails_the_whole_request`, local runs 2026-10-01 |
-| Timestamps serialized through `serde_json` are stored as strings and silently fail datetime comparisons; a `<datetime>` cast matches them | TESTED BEHAVIOR | Reproducer `json_timestamps_are_strings_and_drop_out_of_datetime_comparisons`, local runs 2026-10-01 |
-| A `TYPE datetime` field refuses a JSON timestamp string instead of storing it | TESTED BEHAVIOR | CLI 3.2.4; same reproducer (SDK `.create().content()` path), local runs 2026-10-01 |
-| `UPSERT … MERGE` keeps fields absent from the payload; `UPSERT … CONTENT` replaces the record | TESTED BEHAVIOR | Reproducer `upsert_merge_keeps_absent_fields_while_content_replaces_the_record`, local runs 2026-10-01 |
+| `ORDER BY` a field missing from the projection is a parse error (``Missing order idiom `x` in statement selection``) that fails the whole request, so its earlier valid statements do not run | TESTED BEHAVIOR | CLI 3.2.4; reproducer `order_by_needs_its_field_selected_and_the_parse_error_fails_the_whole_request`, local runs 2026-10-01 and CI run 36897934223 |
+| Timestamps serialized through `serde_json` are stored as strings and silently fail datetime comparisons; a `<datetime>` cast matches them | TESTED BEHAVIOR | Reproducer `json_timestamps_are_strings_and_drop_out_of_datetime_comparisons`, local runs 2026-10-01 and CI run 36897934223 |
+| A `TYPE datetime` field refuses a JSON timestamp string instead of storing it | TESTED BEHAVIOR | CLI 3.2.4; same reproducer (SDK `.create().content()` path), local runs 2026-10-01 and CI run 36897934223 |
+| `UPSERT … MERGE` keeps fields absent from the payload; `UPSERT … CONTENT` replaces the record | TESTED BEHAVIOR | Reproducer `upsert_merge_keeps_absent_fields_while_content_replaces_the_record`, local runs 2026-10-01 and CI run 36897934223 |
 | A lookup ordering by an unselected field shipped and failed on every call without surfacing the error | CASE-STUDY EVIDENCE | Astra message-log lookup, found in review, 2026-09 |
 
 ---
@@ -115,9 +121,9 @@ Local runs, 2026-10-01:
 | `TYPE RELATION FROM ... TO ...` is current relation-table syntax | VERIFIED API | [DEFINE TABLE](https://surrealdb.com/docs/reference/query-language/statements/define/table) |
 | Every relation edge should be unique by `(in,out)` | FALSE / NOT A GENERAL RULE | Domain-dependent integrity rule |
 | Fresh-install execution can expose nested-schema gaps hidden by long-lived dev state | CASE-STUDY EVIDENCE / TESTING RULE | Brew & Batch validation work |
-| SCHEMAFULL refuses an undefined top-level field (`Found field 'x', but no such field exists for table 'y'`) | TESTED BEHAVIOR | CLI 3.2.4; reproducer `schemafull_refuses_an_undefined_top_level_field_an_undefined_table_hides_it`, local runs 2026-10-01 |
-| With default settings, a write to a table that was never defined succeeds with any field, so such a fixture cannot detect SCHEMAFULL refusals | TESTED BEHAVIOR | Same reproducer, local runs 2026-10-01 |
-| SCHEMALESS tables enforce `TYPE` / `ASSERT` on the fields they define; `option<string>` with `ASSERT $value = NONE OR $value IN [...]` is an optional enumeration | TESTED BEHAVIOR | CLI 3.2.4; reproducer `schemaless_tables_still_enforce_the_fields_they_define`, local runs 2026-10-01 |
+| SCHEMAFULL refuses an undefined top-level field (`Found field 'x', but no such field exists for table 'y'`) | TESTED BEHAVIOR | CLI 3.2.4; reproducer `schemafull_refuses_an_undefined_top_level_field_an_undefined_table_hides_it`, local runs 2026-10-01 and CI run 36897934223 |
+| With default settings, a write to a table that was never defined succeeds with any field, so such a fixture cannot detect SCHEMAFULL refusals | TESTED BEHAVIOR | Same reproducer, local runs 2026-10-01 and CI run 36897934223 |
+| SCHEMALESS tables enforce `TYPE` / `ASSERT` on the fields they define; `option<string>` with `ASSERT $value = NONE OR $value IN [...]` is an optional enumeration | TESTED BEHAVIOR | CLI 3.2.4; reproducer `schemaless_tables_still_enforce_the_fields_they_define`, local runs 2026-10-01 and CI run 36897934223 |
 | A missing SCHEMAFULL field migration passed tests that created rows in an undefined table, and failed in production | CASE-STUDY EVIDENCE | Astra per-user language preference on a SCHEMAFULL `user` table, 2026-09 |
 
 ---
