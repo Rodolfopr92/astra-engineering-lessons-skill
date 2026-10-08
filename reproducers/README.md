@@ -122,6 +122,16 @@ resolved: surrealdb, surrealdb-core, -types, -types-derive, -collections, -stran
 cargo test --locked --all-targets: core_contract 5 passed, schema_and_query_shapes 5 passed; 10 passed, 0 failed
 ```
 
+GitHub Actions confirmed it on the pushed head:
+
+```text
+GitHub Actions run: 37824036016
+head: 79b51bc830869bb10fa29aa71c7eb67ed4dd0a37
+Rust: 1.96.0, --locked
+compiled: surrealdb-collections, surrealdb-strand, surrealdb-core, surrealdb-types, surrealdb-types-derive, surrealdb v3.2.4
+result: 10 passed, 0 failed
+```
+
 ## Cross-version rule
 
 Never use a passing 3.2.4 reproducer as automatic proof for 3.3, 4.x, or another SDK/server combination. Copy or parameterize the reproducer, pin the new baseline, run it, then update the ledger.
