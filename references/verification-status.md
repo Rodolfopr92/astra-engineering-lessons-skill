@@ -45,6 +45,7 @@ Six findings from a proving repository (Astra, 2026-09-28 to 10-01) were reduced
 - **The gap:** the SDK reaches `surrealdb-core`, `surrealdb-types` and `surrealdb-types-derive` through caret requirements. 3.3.0 of those crates was published on 2026-09-24. A fresh resolution of the old manifest on 2026-10-01 gave SDK 3.2.4 on core, types and derive 3.3.0.
 - **Earlier evidence stands:** the 2026-09-12 runs predate 3.3.0, and caret requirements do not select the 3.3.0 betas, so those runs resolved 3.2.4.
 - **Now:** the three crates are pinned `=3.2.4`, `Cargo.lock` is committed, and CI runs `--locked`.
+- **Correction (2026-10-08):** three pins were not enough. `surrealdb-core` 3.2.4 depends on `surrealdb-collections` and `surrealdb-strand` through `^3.2.4`, and the committed lock had resolved both to 3.3.0. So the 2026-10-01 runs below, local and CI 36897934223, ran core 3.2.4 on collections and strand 3.3.0. Both are now pinned `=3.2.4` too; see the 2026-10-08 runs.
 
 Local runs, 2026-10-01:
 
@@ -72,7 +73,8 @@ GitHub Actions, 2026-10-01:
 | `(table, id)` tuple resources remain supported by Rust SDK methods | VERIFIED API | [Working with types](https://surrealdb.com/docs/reference/rust/concepts/working-with-types) |
 | A row containing intrinsic `id` decodes into `RecordId`, while the same row does not decode into a struct declaring `id: String` | TESTED BEHAVIOR | Reproducer runs 34691471041 and 34691656259, `intrinsic_id_is_record_id_not_string` |
 | `surrealdb = "=3.2.4"` alone does not pin `surrealdb-core` / `-types` / `-types-derive`; since 2026-09-24 a fresh resolution selects 3.3.0 for them | TESTED BEHAVIOR | `cargo generate-lockfile` on the unpinned reproducer manifest, 2026-10-01; crates.io publish dates |
-| Pinning those three crates `=3.2.4` next to the SDK resolves the whole family to 3.2.4 | TESTED BEHAVIOR | `reproducers/surrealdb-3.2.4/Cargo.lock`; local runs 2026-10-01 and CI run 36897934223 |
+| Pinning those three crates `=3.2.4` next to the SDK resolves the whole family to 3.2.4 | FALSE (corrected 2026-10-08) | The lock kept `surrealdb-collections` and `surrealdb-strand` at 3.3.0; see the next row. Original evidence: `reproducers/surrealdb-3.2.4/Cargo.lock`; local runs 2026-10-01 and CI run 36897934223 |
+| `surrealdb-core` 3.2.4 depends on `surrealdb-collections` and `surrealdb-strand` through `^3.2.4`; pinning all five crates (core, types, types-derive, collections, strand) resolves the engine to 3.2.4 | TESTED BEHAVIOR | crates.io dependency metadata for surrealdb-core 3.2.4; reproducer lock and runs of 2026-10-08 |
 | `db.select()` requires `SurrealValue`; domain types deriving only Serde must select into `Option<serde_json::Value>` | VERIFIED API + CASE-STUDY EVIDENCE | [Rust SDK docs](https://docs.rs/surrealdb/3.2.4/surrealdb/struct.Surreal.html#method.select); Astra contract gateway |
 
 ---

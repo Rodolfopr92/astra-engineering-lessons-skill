@@ -12,6 +12,9 @@ surrealdb = { version = "=3.2.4", default-features = false, features = ["kv-mem"
 surrealdb-core = { version = "=3.2.4", default-features = false }
 surrealdb-types = "=3.2.4"
 surrealdb-types-derive = "=3.2.4"
+# surrealdb-core reaches collections and strand through caret ranges as well (found 2026-10-08).
+surrealdb-collections = "=3.2.4"
+surrealdb-strand = "=3.2.4"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tempfile = "3"

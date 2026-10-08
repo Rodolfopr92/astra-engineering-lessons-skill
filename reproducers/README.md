@@ -16,7 +16,7 @@ Target:
 
 ```text
 SurrealDB Rust SDK: =3.2.4
-engine crates (surrealdb-core, -types, -types-derive): =3.2.4, Cargo.lock committed
+engine crates (surrealdb-core, -types, -types-derive, -collections, -strand): =3.2.4, Cargo.lock committed
 engine modes: Mem + embedded SurrealKV
 Rust verification toolchain: 1.96.0 (CI)
 ```
@@ -80,7 +80,7 @@ Until this pass, the suite pinned only `surrealdb = "=3.2.4"` and had no `Cargo.
 - 3.3.0 of those crates was published on 2026-09-24.
 - A fresh resolution of the old manifest on 2026-10-01 gave SDK 3.2.4 with core, types and derive 3.3.0.
 
-The 2026-09-12 runs above predate 3.3.0, and caret requirements do not select the 3.3.0 betas, so their evidence stands. The crates are now pinned `=3.2.4`, `Cargo.lock` is committed, and CI runs with `--locked`.
+The 2026-09-12 runs above predate 3.3.0, and caret requirements do not select the 3.3.0 betas, so their evidence stands. The crates are now pinned `=3.2.4`, `Cargo.lock` is committed, and CI runs with `--locked`. Those three pins turned out to be incomplete; see 2026-10-08.
 
 Local verification of the extended suite:
 
@@ -100,6 +100,26 @@ head: f029a0a0446661855ce01f9d210ac4c0fbc41890
 Rust: 1.96.0, --locked
 compiled: surrealdb, surrealdb-core, surrealdb-types, surrealdb-types-derive v3.2.4
 result: 10 passed, 0 failed
+```
+
+### 2026-10-08: two more engine crates
+
+The 2026-10-01 lock did not hold the whole engine at 3.2.4:
+
+- `surrealdb-core` 3.2.4 depends on `surrealdb-collections` and `surrealdb-strand` through `^3.2.4`.
+- The committed lock had resolved both of them to 3.3.0.
+
+So the 2026-10-01 runs above, local and CI, ran core 3.2.4 on collections and strand 3.3.0. Their results stand for that mix, but they were not a pure 3.2.4 engine.
+
+Both crates are now pinned `=3.2.4`, and the lock was updated for exactly those two packages. Only `surrealdb-protocol` keeps its own version line (0.10.2).
+
+Local verification:
+
+```text
+date: 2026-10-08
+Rust: 1.98.1 (local); CI uses 1.96.0
+resolved: surrealdb, surrealdb-core, -types, -types-derive, -collections, -strand = 3.2.4 (surrealdb-protocol 0.10.2)
+cargo test --locked --all-targets: core_contract 5 passed, schema_and_query_shapes 5 passed; 10 passed, 0 failed
 ```
 
 ## Cross-version rule

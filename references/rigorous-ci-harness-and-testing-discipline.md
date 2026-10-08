@@ -174,8 +174,8 @@ The reusable lesson is **dependency determinism**, not a ritual command string.
 
 An exact pin on a top-level crate does not pin what that crate depends on.
 
-- The SurrealDB 3.2.4 SDK reaches its engine crates through caret requirements.
-- So, without a lockfile, a resolution made after 2026-09-24 builds SDK 3.2.4 on engine 3.3.0.
+- The SurrealDB 3.2.4 SDK reaches its engine crates through caret requirements, and `surrealdb-core` reaches `surrealdb-collections` and `surrealdb-strand` the same way. Pinning one level is not enough: read the whole family in the lock.
+- So, without a lockfile, a resolution made after 2026-09-24 builds SDK 3.2.4 on 3.3.x engine crates.
 - A test or reproducer labelled with a version must pin the crates that implement the behavior, commit `Cargo.lock`, and run with `--locked`.
 
 ---

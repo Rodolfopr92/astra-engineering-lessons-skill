@@ -130,18 +130,20 @@ Official:
 
 ### An exact SDK pin does not pin the engine
 
-`surrealdb = "=3.2.4"` pins only the SDK crate. The SDK reaches `surrealdb-core`, `surrealdb-types` and `surrealdb-types-derive` through caret requirements. Since 3.3.0 was published (2026-09-24), a resolution without a lockfile builds SDK 3.2.4 on engine 3.3.0, under a 3.2.4 label. For `Mem` and `SurrealKv`, `surrealdb-core` *is* the database. For a remote connection, check the server's version as well.
+`surrealdb = "=3.2.4"` pins only the SDK crate. The SDK reaches `surrealdb-core`, `surrealdb-types` and `surrealdb-types-derive` through caret requirements, and `surrealdb-core` reaches `surrealdb-collections` and `surrealdb-strand` the same way. Since 3.3.0 was published (2026-09-24), a resolution without a lockfile builds SDK 3.2.4 on 3.3.x engine crates, under a 3.2.4 label. Pinning only `surrealdb-core` still lets the two inner crates float. For `Mem` and `SurrealKv`, these crates *are* the database. For a remote connection, check the server's version as well.
 
 ```toml
 surrealdb = { version = "=3.2.4", default-features = false, features = ["kv-surrealkv"] }
 surrealdb-core = { version = "=3.2.4", default-features = false }
 surrealdb-types = "=3.2.4"
 surrealdb-types-derive = "=3.2.4"
+surrealdb-collections = "=3.2.4"
+surrealdb-strand = "=3.2.4"
 ```
 
-Commit `Cargo.lock`, and run CI with `--locked`.
+Commit `Cargo.lock`, run CI with `--locked`, and read the lock: every `surrealdb-*` crate except `surrealdb-protocol`, which has its own version line, must show the baseline.
 
-**TESTED BEHAVIOR** (dependency resolution, 2026-10-01). See the [ledger](references/verification-status.md).
+**TESTED BEHAVIOR** (dependency resolution, 2026-10-01; corrected 2026-10-08 after the lock showed collections and strand at 3.3.0). See the [ledger](references/verification-status.md).
 
 ### SCHEMAFULL nested data
 
