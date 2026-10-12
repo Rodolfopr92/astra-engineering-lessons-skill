@@ -187,3 +187,36 @@ async fn schemaless_tables_still_enforce_the_fields_they_define() -> surrealdb::
     assert!(language.check().is_err(), "an unlisted language must be refused");
     Ok(())
 }
+
+/// Widening an enum-like `ASSERT` with `DEFINE FIELD IF NOT EXISTS` is a silent no-op when the
+/// field already exists: the statement succeeds, the old rule stays, and writes with the new value
+/// are still refused. Only `OVERWRITE` replaces the definition. Found when an audit table refused
+/// every event a component logged with an actor value outside the migration's list.
+#[tokio::test]
+async fn if_not_exists_cannot_widen_an_existing_assert_overwrite_can() -> surrealdb::Result<()> {
+    let db = memory_db().await?;
+    db.query(
+        "DEFINE TABLE ledger SCHEMAFULL;
+         DEFINE FIELD IF NOT EXISTS actor ON TABLE ledger TYPE string
+             ASSERT $value IN ['user', 'system'];
+         DEFINE FIELD IF NOT EXISTS actor ON TABLE ledger TYPE string
+             ASSERT $value IN ['user', 'system', 'owner'];",
+    )
+    .await?
+    .check()?;
+
+    let still_refused = db.query("CREATE ledger SET actor = 'owner'").await?;
+    assert!(
+        still_refused.check().is_err(),
+        "IF NOT EXISTS must have left the original, narrower ASSERT in place"
+    );
+
+    db.query(
+        "DEFINE FIELD OVERWRITE actor ON TABLE ledger TYPE string
+             ASSERT $value IN ['user', 'system', 'owner'];
+         CREATE ledger SET actor = 'owner';",
+    )
+    .await?
+    .check()?;
+    Ok(())
+}

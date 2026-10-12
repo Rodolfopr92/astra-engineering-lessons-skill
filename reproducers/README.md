@@ -132,6 +132,17 @@ compiled: surrealdb-collections, surrealdb-strand, surrealdb-core, surrealdb-typ
 result: 10 passed, 0 failed
 ```
 
+## 2026-10-12: one more schema test (CI pending)
+
+`schema_and_query_shapes.rs` gained `if_not_exists_cannot_widen_an_existing_assert_overwrite_can`: re-running `DEFINE FIELD IF NOT EXISTS` with a wider `ASSERT` list changes nothing, and only `OVERWRITE` widens it.
+
+```text
+date: 2026-10-12
+Rust: 1.98.1 (local), --locked
+cargo test --locked --test schema_and_query_shapes: 6 passed, 0 failed
+CI: pending until pushed
+```
+
 ## Cross-version rule
 
 Never use a passing 3.2.4 reproducer as automatic proof for 3.3, 4.x, or another SDK/server combination. Copy or parameterize the reproducer, pin the new baseline, run it, then update the ledger.

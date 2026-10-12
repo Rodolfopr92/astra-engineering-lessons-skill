@@ -295,3 +295,28 @@ persistence restart
 ```
 
 Use sanitized synthetic fixtures, not customer fiscal documents.
+
+## NF-e Signatures: What the File Can and Cannot Prove
+
+Research and a prototype for a proving repository (Astra, 2026-10-09/10). Sources: the national *Manual de Orientação do Contribuinte* (updated to NT 2026.007) and the official schema package PL_010_V1.30.
+
+What the specification fixes (**VERIFIED API**, from the official schema and manual):
+
+- The issuer signs `infNFe`, referenced as `URI="#NFe<key>"`. `ds:Signature` is the last child of `NFe`, a sibling of `infNFe`, so the enveloped-signature transform removes nothing from the signed content.
+- The algorithms are fixed by the schema: inclusive C14N 1.0 (`http://www.w3.org/TR/2001/REC-xml-c14n-20010315`), `rsa-sha1`, `sha1`. A file using anything else is not a valid NF-e. No current technical note moves the issuer signature to SHA-256.
+- `KeyInfo` carries only the end-entity certificate. A verifier must bring its own ICP-Brasil intermediates and roots, and must never trust the key in the file by itself.
+- A CNPJ certificate must match the first 8 characters of `emit/CNPJ` (any branch may sign); a CPF certificate must match `emit/CPF` exactly. Invoices issued by SEFAZ, NFF and PAA invoices have special signers.
+- `protNFe/infProt/digVal` is a copy of the issuer's `DigestValue`, and the protocol's own signature is optional. A typed-up `protNFe` with `cStat 100` on a genuinely signed invoice passes every offline check.
+- Cancellation is a separate event and never changes the `nfeProc` file.
+
+Consequences:
+
+1. A valid issuer signature proves the content is what the issuer signed. It does not prove SEFAZ authorized it, nor that it was not cancelled later. Only an online check (for example `NFeConsultaProtocolo4` with an ICP-Brasil certificate) can.
+2. Never show "authorized" from the file's own `cStat`. Show "stated in the file" until an authoritative source confirms it.
+
+Implementation traps (**CASE-STUDY EVIDENCE**, observed in a scratch prototype):
+
+- **Comment split.** C14N without comments drops comments, so `<vNF>50<!---->00.00</vNF>` keeps a valid signature, while a reader that takes only the first text node (`roxmltree::Node::text()`, lxml `.text`) reads `50`. Reject comments and processing instructions inside fiscal content, or concatenate all text children, before trusting a value.
+- **lxml subtree C14N.** `etree.tostring(element, method="c14n")` on a sub-element added a spurious `xmlns=""` to nested elements that inherit the default namespace (lxml 6.1.3 / libxml2 2.14.6), so real signatures never matched. Canonicalize with a method proven on real signed samples.
+- **Re-indented files.** Pretty-printing changes whitespace text nodes inside the signed element and breaks the digest. A single, clearly labelled retry without whitespace-only text between tags is the most a verifier should attempt.
+- **Two parsers, two truths.** Verify the signature on the same parsed tree that produces the displayed values, or the comment split reopens in another form.

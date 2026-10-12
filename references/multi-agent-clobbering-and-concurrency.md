@@ -212,3 +212,27 @@ Before parallel agents edit one codebase:
 [ ] exact-SHA CI evidence before merge
 [ ] handoff claims verified against repository state
 ```
+
+## 11. `git stash` Is Shared by Every Worktree
+
+Worktrees isolate files and branches, not stashes. `refs/stash` belongs to the repository, so every worktree sees and pops the same stack.
+
+The dangerous sequence:
+
+```bash
+git stash push -- some/file     # prints "No local changes to save" and creates nothing
+# ... temporary experiment ...
+git stash pop                   # pops whatever is on top: possibly another agent's stash
+```
+
+Reproduced with git 2.43.0 in a throwaway repository: a stash made in the main worktree was applied in a second worktree and then **dropped** from the stack. If the apply had conflicted, git would have kept the entry; without a conflict, the other worktree's saved work exists only in the wrong checkout.
+
+Case study (Astra, 2026-10-10): an agent set files aside with `git stash push -- <paths>` to test old code, the files had no changes, and the following `pop` applied an unrelated `wip_runtime_code` stash into its worktree with conflicts. Because of the conflict git kept the entry, and it was recovered intact.
+
+Rules:
+
+- To test old code, use `git show <rev>:<path> > <path>` and restore with `git checkout -- <path>`, or a separate worktree at that revision. Do not use the stash.
+- If you must stash, name it (`git stash push -m <unique-name>`), then apply exactly that entry (`git stash list`, `git stash apply stash@{n}`), never a bare `pop`.
+- Before any stash operation, run `git stash list` and treat existing entries as someone else's work.
+
+**TESTED BEHAVIOR** (git 2.43.0, throwaway repository) plus **CASE-STUDY EVIDENCE**.

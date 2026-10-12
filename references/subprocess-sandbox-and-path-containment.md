@@ -215,3 +215,12 @@ control-character filename                    → reject/sanitize
 ```
 
 Do not replace these with mocks alone. The filesystem behavior itself is the boundary being claimed.
+
+## 10. Containment Claims Need the Same Evidence as Any Other Claim
+
+Observed in a proving repository (Astra, 2026-10-09/10):
+
+- **`bwrap --uid N` is a label, not a separate account.** Run unprivileged, bubblewrap creates a user namespace and maps the caller to `N` inside it. `id` inside says `N`; `ps` outside shows the caller's own uid. What bwrap really provides is the mount, PID and user namespaces. A sandbox escape is the caller's user, with everything that user can read (**TESTED BEHAVIOR**, bubblewrap 0.9.0).
+- **A Python-level network block does not bind native code.** Replacing `socket` functions inside the interpreter stops Python libraries from downloading models, but a native parser or ML runtime can still open sockets. Call it a guard against accidents, not an isolation boundary (**CASE-STUDY EVIDENCE**).
+- **Size memory caps from measured peaks, and apply them in the per-request entry point.** `RLIMIT_AS` limits virtual address space, which ML runtimes reserve far beyond their resident memory. One measurement: a photo OCR reserved about 3.3 GB virtual for 1.8 GB resident, and a spreadsheet conversion about 1.7 GB for 0.19 GB. Limits can only be lowered, so set them where one process serves one request, never inside a library function that in-process test suites call repeatedly (**CASE-STUDY EVIDENCE**).
+- **Check an archive's declared expansion before any reader inflates it.** Office files are ZIP archives. Refusing totals, entry counts and compression ratios beyond sane bounds before the converter opens the file stops a small upload from inflating to gigabytes (**CASE-STUDY EVIDENCE**).

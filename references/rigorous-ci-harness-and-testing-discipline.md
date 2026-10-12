@@ -389,3 +389,28 @@ This difference alters the SHA-256 digest, breaking historical verification, has
 2. **Provenance canonicalization**: Before computing cryptographic digests, run serialization through an explicit canonicalization routine that strips default/absent fields.
 
 **CASE-STUDY EVIDENCE.**
+
+## 14. Env-Gated Early Returns Report `ok` Without Running
+
+Live tests are often written as:
+
+```rust
+#[tokio::test]
+async fn live_session_roundtrip() {
+    if std::env::var("LIVE_TESTS").as_deref() != Ok("1") { return; }
+    // ... talks to a real database ...
+}
+```
+
+Such a test is reported as `ok` in every stage that does not set the variable. A gate that runs the live stage with `cargo test <prefix> -- --ignored` never selects it either: it is not `#[ignore]`, and a module named `live_session_tests` or `live_db_tests` does not contain the substring `live_tests`. The suite stays green while the code path is never exercised.
+
+Case study (Astra, 2026-10-11): a review of the gate log found seven live tests that had never run, including session and isolation suites, while the gate ended with "all tests passed". The tell was timing: a 28-test binary that "passed" its database tests in 0.13 s.
+
+Rules:
+
+1. Mark live tests `#[ignore = "<what they need>"]` and run them with an explicit, named invocation (`--test <file> -- --ignored`), not only a name filter.
+2. If a test must read an environment variable, make it fail, not return, when it runs in the live stage without its configuration.
+3. After adding or renaming a live test, check the live stage log for its name.
+4. Watch durations: a database test that finishes in milliseconds probably did nothing.
+
+**CASE-STUDY EVIDENCE.**

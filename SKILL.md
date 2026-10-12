@@ -185,6 +185,20 @@ DEFINE FIELD language ON TABLE user TYPE option<string>
 
 **TESTED BEHAVIOR.** Reproducer: `schemaless_tables_still_enforce_the_fields_they_define`.
 
+### Widening an `ASSERT` on an existing database
+
+`DEFINE FIELD IF NOT EXISTS` does nothing when the field already exists. Re-running it with a wider list succeeds silently, the old rule stays, and writes with the new value are still refused:
+
+```text
+Found 'owner' for field `actor`, with record `ledger:…`, but field must conform to: $value INSIDE ['user', 'system']
+```
+
+- Change an existing field with `DEFINE FIELD OVERWRITE` in a migration.
+- The error prints `IN` as `INSIDE`; search for both.
+- An enum-like `ASSERT` list must cover every value any writer sends. Drive the real writers through the production DDL (rule 13), not only one sample row.
+
+**CASE-STUDY EVIDENCE, local reproducer passed; CI pending.** Reproducer: `if_not_exists_cannot_widen_an_existing_assert_overwrite_can`. Details: [migrations §12](references/surrealdb-3-migrations-and-recovery-evidence.md).
+
 ### Query response errors
 
 ```rust
@@ -350,9 +364,11 @@ Official: https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html
 12. **Do not use this skill to make architecture decisions.**
 13. **Build test schemas from the production migration.** An undefined table is schemaless and accepts writes that production refuses.
 14. **Never treat a query error as an empty result.** A parse error fails every statement in the request.
-15. **Filter test suites with naming discipline and execution assertions.** Cargo test filters match by substring; a test omitting the prefix silently skips, reporting a green test run with 0 tests executed.
+15. **Filter test suites with naming discipline and execution assertions.** Cargo test filters match by substring; a test omitting the prefix silently skips, reporting a green test run with 0 tests executed. A test that returns early when its environment variable is missing is reported as `ok` without having run.
 16. **Verification tools must tolerate `rustfmt` formatting.** Do not use brittle single-line regexes to validate Rust code patterns that `cargo fmt` reflows into multi-line layouts.
 17. **`#[serde(default)]` does not skip serialization.** In audited provenance structs, pair `#[serde(default)]` with `skip_serializing_if` to prevent default fields from polluting JSON and corrupting historical cryptographic hashes.
+18. **A document's own fields are not proof of its authority.** A status code, protocol or "authorized" flag inside an uploaded file is a claim by whoever produced the file; display it as stated by the file until a signature or the issuing authority confirms it.
+19. **`git stash` is shared by every worktree of a repository.** Never `stash pop` after a `stash push` that may have saved nothing; see [multi-agent §11](references/multi-agent-clobbering-and-concurrency.md).
 
 ## 7. Reproducers are first-class evidence
 

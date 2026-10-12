@@ -73,6 +73,20 @@ GitHub Actions, 2026-10-08:
 
 ---
 
+### 2026-10-12: widening an `ASSERT` (CI pending)
+
+An audit-table incident in the proving repository was reduced to `if_not_exists_cannot_widen_an_existing_assert_overwrite_can` in `schema_and_query_shapes.rs`.
+
+```text
+date: 2026-10-12
+SurrealDB CLI: 3.2.4+20260803.93ab219 (in-memory engine) — behavior confirmed before writing the test
+Rust: 1.98.1 (local), --locked
+cargo test --locked --test schema_and_query_shapes: 6 passed, 0 failed
+CI: pending (the change is not pushed yet)
+```
+
+Until CI confirms it, the claim stays CASE-STUDY EVIDENCE with a passing local reproducer.
+
 ## SurrealDB Rust SDK / type contract
 
 | Claim | Status | Claim-level evidence |
@@ -186,6 +200,12 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 
 ---
 
+## SCHEMA evolution (2026-10-12)
+
+| Claim | Status | Claim-level evidence |
+|---|---|---|
+| `DEFINE FIELD IF NOT EXISTS` with a different `ASSERT` is a silent no-op on an existing field; `OVERWRITE` replaces it | CASE-STUDY EVIDENCE (local reproducer passed, CI pending) | `if_not_exists_cannot_widen_an_existing_assert_overwrite_can` |
+
 ## Multi-tenancy / session isolation
 
 | Claim | Status | Claim-level evidence |
@@ -206,6 +226,9 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 | Cargo test filter matches test names by substring; tests without matching prefix silently skip and exit code 0 | CASE-STUDY EVIDENCE | Astra contract gateway integration tests (`live_tests` filter) |
 | Brittle single-line regex assertions in verification scripts break when `cargo fmt` reflows code into multi-line formatting | CASE-STUDY EVIDENCE | Astra pre-commit / test verification harness |
 | `#[serde(default)]` does not omit fields during serialization; missing `skip_serializing_if` emits empty values altering cryptographic provenance digests | CASE-STUDY EVIDENCE | Astra audited contract event provenance hashing |
+| A test that returns early when its environment variable is missing is reported `ok`; a live stage filtered by `live_tests` misses `live_db_tests` / `live_session_tests` modules | CASE-STUDY EVIDENCE | Astra gate review 2026-10-11 (seven live tests never ran) |
+| `git stash` is shared by all worktrees; `stash push -- <paths>` with no changes creates nothing, and a following `pop` applies and drops another worktree's stash | TESTED BEHAVIOR | git 2.43.0 throwaway repository, 2026-10-12; Astra incident 2026-10-10 |
+| Unprivileged `bwrap --uid N` maps the caller inside a user namespace; outside, the process keeps the caller's uid | TESTED BEHAVIOR | bubblewrap 0.9.0, `id` inside vs `ps` outside, 2026-10-09 |
 
 ---
 
@@ -218,6 +241,10 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 | Astra structurally distinguishes raw `NFe` and `nfeProc` | TESTED BEHAVIOR | Astra Phase 5 fixtures/tests |
 | Parsed NF-e data is legally validated by SEFAZ | NOT IMPLEMENTED | No live SEFAZ verification |
 | NF-e XML signature chain is cryptographically verified | NOT IMPLEMENTED | No signature-chain validation |
+| NF-e issuer signature uses inclusive C14N 1.0, rsa-sha1 and sha1, fixed by the official schema | VERIFIED API | MOC (NT 2026.007) §4.2.4; PL_010_V1.30 `xmldsig-core-schema_v1.01.xsd` |
+| `protNFe` `cStat 100` inside a file proves SEFAZ authorization | FALSE | `digVal` is a public copy and the protocol signature is optional; only an online check confirms authorization or cancellation |
+| C14N drops comments, so a comment inside a signed value keeps the signature valid while first-text-node readers see a different value | CASE-STUDY EVIDENCE | Astra signature prototype, 2026-10-10 |
+| lxml `tostring(el, method="c14n")` on a sub-element adds `xmlns=""` to nested default-namespace elements | CASE-STUDY EVIDENCE | lxml 6.1.3 / libxml2 2.14.6, Astra prototype, 2026-10-10 |
 | NF-e multi-table materialization is transactionally all-or-nothing | OPEN / NOT YET PROVEN | Current Phase 5 path remains sequential until rollback proof exists |
 
 ---

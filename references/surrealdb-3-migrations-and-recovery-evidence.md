@@ -294,7 +294,22 @@ Found 'jadlog' for field `carrier`, with record `s:bad`, but field must conform 
 
 ---
 
-## 12. Out of scope: choosing SurrealDB's architectural authority role
+## 12. Widening an `ASSERT` needs `OVERWRITE`, not `IF NOT EXISTS`
+
+A migration written as `DEFINE FIELD IF NOT EXISTS … ASSERT $value IN [...]` is idempotent, which is why it is popular. It also means the migration can never change that rule again on a database where the field exists: re-running it with a wider list returns success and changes nothing.
+
+Case study (Astra, 2026-10-09): the production audit table allowed `actor_type IN ['user', 'system', 'agent']`, while two components logged `'master_admin'` and `'guest'`. Every one of those events was refused; one call site turned the refusal into a hard failure that blocked an elevation flow. The test suites created the audit table SCHEMALESS without the rule, so nothing failed in CI.
+
+What to do:
+
+1. Change an existing field with `DEFINE FIELD OVERWRITE`, in a migration that is meant to change it.
+2. Keep `IF NOT EXISTS` for first creation only.
+3. Apply the production DDL in tests and drive every writer of an enum-like field through it.
+4. Remember that the error prints `IN` as `INSIDE`.
+
+**CASE-STUDY EVIDENCE, local reproducer passed; CI pending.** Confirmed with the SurrealDB CLI `3.2.4+20260803.93ab219` against an in-memory engine, then `reproducers/surrealdb-3.2.4/tests/schema_and_query_shapes.rs::if_not_exists_cannot_widen_an_existing_assert_overwrite_can` passed locally (Rust 1.98.1, 6/6 tests).
+
+## 13. Out of scope: choosing SurrealDB's architectural authority role
 
 This reference deliberately does not answer questions such as:
 
