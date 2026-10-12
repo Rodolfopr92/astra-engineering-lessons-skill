@@ -197,7 +197,7 @@ Found 'owner' for field `actor`, with record `ledger:…`, but field must confor
 - The error prints `IN` as `INSIDE`; search for both.
 - An enum-like `ASSERT` list must cover every value any writer sends. Drive the real writers through the production DDL (rule 13), not only one sample row.
 
-**CASE-STUDY EVIDENCE, local reproducer passed; CI pending.** Reproducer: `if_not_exists_cannot_widen_an_existing_assert_overwrite_can`. Details: [migrations §12](references/surrealdb-3-migrations-and-recovery-evidence.md).
+**TESTED BEHAVIOR.** Reproducer: `if_not_exists_cannot_widen_an_existing_assert_overwrite_can`. Details: [migrations §12](references/surrealdb-3-migrations-and-recovery-evidence.md).
 
 ### Query response errors
 

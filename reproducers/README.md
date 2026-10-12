@@ -132,7 +132,7 @@ compiled: surrealdb-collections, surrealdb-strand, surrealdb-core, surrealdb-typ
 result: 10 passed, 0 failed
 ```
 
-## 2026-10-12: one more schema test (CI pending)
+## 2026-10-12: one more schema test
 
 `schema_and_query_shapes.rs` gained `if_not_exists_cannot_widen_an_existing_assert_overwrite_can`: re-running `DEFINE FIELD IF NOT EXISTS` with a wider `ASSERT` list changes nothing, and only `OVERWRITE` widens it.
 
@@ -140,7 +140,16 @@ result: 10 passed, 0 failed
 date: 2026-10-12
 Rust: 1.98.1 (local), --locked
 cargo test --locked --test schema_and_query_shapes: 6 passed, 0 failed
-CI: pending until pushed
+```
+
+GitHub Actions confirmed it on the pushed head:
+
+```text
+GitHub Actions run: 38314604229
+head: 37006d4260b4e4b99e52767cf09174cadfbb79d6
+Rust: 1.96.0, --locked
+compiled: surrealdb-collections, surrealdb-strand, surrealdb-core, surrealdb-types, surrealdb-types-derive, surrealdb v3.2.4
+result: 11 passed (core_contract 5, schema_and_query_shapes 6), 0 failed
 ```
 
 ## Cross-version rule

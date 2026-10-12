@@ -307,7 +307,7 @@ What to do:
 3. Apply the production DDL in tests and drive every writer of an enum-like field through it.
 4. Remember that the error prints `IN` as `INSIDE`.
 
-**CASE-STUDY EVIDENCE, local reproducer passed; CI pending.** Confirmed with the SurrealDB CLI `3.2.4+20260803.93ab219` against an in-memory engine, then `reproducers/surrealdb-3.2.4/tests/schema_and_query_shapes.rs::if_not_exists_cannot_widen_an_existing_assert_overwrite_can` passed locally (Rust 1.98.1, 6/6 tests).
+**TESTED BEHAVIOR** (3.2.4). Confirmed with the SurrealDB CLI `3.2.4+20260803.93ab219` against an in-memory engine, then `reproducers/surrealdb-3.2.4/tests/schema_and_query_shapes.rs::if_not_exists_cannot_widen_an_existing_assert_overwrite_can` passed locally (Rust 1.98.1, 6/6 tests) and in GitHub Actions run 38314604229 (Rust 1.96.0).
 
 ## 13. Out of scope: choosing SurrealDB's architectural authority role
 

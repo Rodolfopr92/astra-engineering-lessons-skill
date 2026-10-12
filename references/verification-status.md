@@ -73,7 +73,7 @@ GitHub Actions, 2026-10-08:
 
 ---
 
-### 2026-10-12: widening an `ASSERT` (CI pending)
+### 2026-10-12: widening an `ASSERT`
 
 An audit-table incident in the proving repository was reduced to `if_not_exists_cannot_widen_an_existing_assert_overwrite_can` in `schema_and_query_shapes.rs`.
 
@@ -82,10 +82,13 @@ date: 2026-10-12
 SurrealDB CLI: 3.2.4+20260803.93ab219 (in-memory engine) — behavior confirmed before writing the test
 Rust: 1.98.1 (local), --locked
 cargo test --locked --test schema_and_query_shapes: 6 passed, 0 failed
-CI: pending (the change is not pushed yet)
 ```
 
-Until CI confirms it, the claim stays CASE-STUDY EVIDENCE with a passing local reproducer.
+GitHub Actions, 2026-10-12:
+
+- Run **38314604229**, exact head **`37006d4260b4e4b99e52767cf09174cadfbb79d6`**.
+- Rust 1.96.0, with `--locked`. The log shows surrealdb-collections, surrealdb-strand, surrealdb-core, surrealdb-types, surrealdb-types-derive, surrealdb compiled at 3.2.4.
+- Result: `core_contract` 5 passed, `schema_and_query_shapes` 6 passed, 0 failed.
 
 ## SurrealDB Rust SDK / type contract
 
@@ -204,7 +207,7 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 
 | Claim | Status | Claim-level evidence |
 |---|---|---|
-| `DEFINE FIELD IF NOT EXISTS` with a different `ASSERT` is a silent no-op on an existing field; `OVERWRITE` replaces it | CASE-STUDY EVIDENCE (local reproducer passed, CI pending) | `if_not_exists_cannot_widen_an_existing_assert_overwrite_can` |
+| `DEFINE FIELD IF NOT EXISTS` with a different `ASSERT` is a silent no-op on an existing field; `OVERWRITE` replaces it | TESTED BEHAVIOR | `if_not_exists_cannot_widen_an_existing_assert_overwrite_can`; local run 2026-10-12 and CI run 38314604229 |
 
 ## Multi-tenancy / session isolation
 
