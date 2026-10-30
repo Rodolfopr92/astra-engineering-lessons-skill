@@ -17,7 +17,7 @@ Its job is technical: correct stale model knowledge about what the current stack
 - Official SDK minimum Rust version: **1.89**
 - Tauri documentation baseline: **2.11.5** (`PathResolver` application-data APIs)
 - Last full verification pass: **2026-09-12**
-- Last partial verification: **2026-10-30** (staged-code pitfalls reproducers: protected parameters, `IF … END`, `ORDER BY` expressions, required record links, UNIQUE over absent values, `take_errors()` cascade, `RecordId` text; earlier passes: 2026-10-12 `ASSERT` widening, 2026-10-01 schema/query shapes and engine pinning)
+- Last partial verification: **2026-10-30** (staged-code pitfalls reproducers: protected parameters, `IF … END`, `ORDER BY` expressions, required record links, UNIQUE over absent values, `take_errors()` cascade, `RecordId` text, unbound parameters; earlier passes: 2026-10-12 `ASSERT` widening, 2026-10-01 schema/query shapes and engine pinning)
 - Routine reverification interval: **90 days maximum**
 
 ## 1. Hard version-decay guard
@@ -301,6 +301,12 @@ The parse error fails the whole request, so every statement in it, valid ones in
 
 **TESTED BEHAVIOR** for the four names and for `$value` / `$this`; **VERIFIED API** for the list (`surrealdb-core-3.2.4/src/cnf/mod.rs`, `PROTECTED_PARAM_NAMES`). Reproducer: `the_four_protected_parameter_names_are_refused_by_let_and_by_bind`.
 
+### An unbound parameter is `NONE`, not an error
+
+`SELECT VALUE reference FROM appt WHERE source_id = $order` with no binding for `order` succeeds and returns every row that has no `source_id`, because the unbound parameter evaluates to `NONE`. A misspelled or forgotten `.bind()` therefore returns the wrong rows silently, and `RETURN $missing` reads as `NONE`. Bind every parameter a statement names, and when a test checks that nothing matched, key the query by a specific id.
+
+**TESTED BEHAVIOR.** Reproducer: `an_unbound_parameter_is_none_and_matches_rows_that_lack_the_field`.
+
 ### `NONE` vs `NULL`
 
 ```surql
@@ -443,6 +449,8 @@ Official: https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html
 20. **Code that never compiled is a draft, not an implementation.** Budget for parse, schema, SDK and lint repairs before its first test; integrate one unit at a time and compile, test and lint it before the next. See [staged code](references/integrating-staged-uncompiled-code.md).
 21. **Read the integrated tree before applying a package's "cumulative corrections".** The fix may already exist; applying it again duplicates behavior (duplicate tasks, double deductions).
 22. **Compare against the registry, not a literal.** A test asserting "15 migrations" breaks when the next migration lands; assert `MIGRATIONS.len()`. Under `-D warnings`, group more than seven function arguments into a struct instead of suppressing the lint.
+23. **Assert integration messages by id, not by topic.** The command that consumes an event writes its own receipt evidence under the same event type, so a count by topic doubles; key the assertion by the producer's command or event id.
+24. **A post-commit follow-up must not change the committed result.** When a transaction commits a durable message and the code then attempts an immediate in-process delivery, a failure of that delivery leaves the message pending and the receipt committed; let the deferred path run for real once before trusting it.
 
 ## 7. Reproducers are first-class evidence
 

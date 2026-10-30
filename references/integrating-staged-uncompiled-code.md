@@ -21,7 +21,7 @@ reverify by:                      2027-01-28, or at once on a target-version mis
 If the target uses another SurrealDB engine, SDK or Tauri version, every `TESTED BEHAVIOR` and
 `VERIFIED API` claim below is **UNVERIFIED FOR THAT TARGET** until re-checked (SKILL §1).
 
-Reproducers: `reproducers/surrealdb-3.2.4/tests/staged_code_pitfalls.rs` (7 tests). The file's
+Reproducers: `reproducers/surrealdb-3.2.4/tests/staged_code_pitfalls.rs` (8 tests). The file's
 imports also pin two compile-time facts (§5).
 
 ---
@@ -232,6 +232,38 @@ patch is an advisory mapping that may target an obsolete baseline.
 4. Then the full suite, strict Clippy, rustfmt, frontend build; then a PR with the required checks.
 5. Record the merge in the living status files through a small follow-up PR, and write every new
    repair class back into this skill.
+6. A background gate script is stopped with a pattern that cannot match the shell issuing the
+   command (`pkill -f 'full_ga[t]es.sh'`); a plain `pkill -f full_gates.sh` kills the calling
+   shell too (exit 144). `pkill -x cargo` is safe for the build itself.
+
+## 11. Block 05 (2026-10-30): the list held, two items were new
+
+The next block of the same package (Agenda / dock orchestration, 1324 supplied lines) was
+integrated with the list above as the checklist. The supplied module compiled on the first
+attempt once the SDK supplement was applied; every defect was a runtime SurrealQL or
+strict-Clippy class already on the list:
+
+- `take_errors().into_iter().next()` at nineteen sites (§5), fixed with the same `first_error`.
+- `too_many_arguments` on a 13-parameter and an 8-parameter function (§8), `needless_borrow`
+  twice, `redundant_field_names` once.
+- `ORDER BY created_at` without `created_at` in the projection (§1.2), twice: once in a test
+  evidence query and once in production code, where it surfaced only because the design
+  deferred the failed in-process delivery to the outbox and the new test read the deferral.
+- Fixture temporaries across `tokio::join!` (§8) and two unused `mut`.
+
+Two items were new and are now in the skill:
+
+- **An unbound parameter is `NONE`.** `WHERE source_id = $order` with no binding matched the
+  legacy rows that had no `source_id`; the request did not fail. Reproducer
+  `an_unbound_parameter_is_none_and_matches_rows_that_lack_the_field`. **TESTED BEHAVIOR.**
+- **Consumer evidence reuses the producer's topic.** The Agenda command that processed
+  `wms.need_door` wrote its own receipt evidence as a second `wms.need_door` domain event and
+  outbox message; a count by topic read 2 where the test expected 1. Assert by command or
+  event id. **CASE-STUDY EVIDENCE.**
+
+Nine Block 05 tests (six supplied, three added) passed on the first integrated run after the
+repairs; strict Clippy and rustfmt clean. The full-suite result is in the DLF Block 05 delivery
+record.
 
 ## Proving case study
 

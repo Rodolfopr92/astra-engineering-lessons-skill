@@ -348,3 +348,47 @@ async fn record_id_text_comes_from_record_id_in_sql_or_to_sql_in_rust() -> Resul
     assert_eq!(ids[0].key.to_sql(), "sku1");
     Ok(())
 }
+
+/// A parameter that was never bound does not fail the request: it evaluates to `NONE`, so a
+/// forgotten or misspelled binding turns `WHERE source_id = $order` into `WHERE source_id = NONE`,
+/// which matches every row that lacks the field. The request succeeds with the wrong rows.
+#[tokio::test]
+async fn an_unbound_parameter_is_none_and_matches_rows_that_lack_the_field() -> Result<(), String> {
+    let db = memory_db().await?;
+    run(
+        &db,
+        "CREATE appt:legacy SET reference = 'LEGACY';
+         CREATE appt:typed SET reference = 'TYPED', source_id = 'order-1';",
+    )
+    .await?;
+
+    let mut unbound = run(
+        &db,
+        "SELECT VALUE reference FROM appt WHERE source_id = $order;",
+    )
+    .await?;
+    let matched: Vec<String> = unbound.take(0).map_err(|e| e.to_string())?;
+    println!("unbound $order matched -> {matched:?}");
+    assert_eq!(
+        matched,
+        ["LEGACY"],
+        "NONE matches the row without the field"
+    );
+
+    let mut missing = run(&db, "RETURN $missing;").await?;
+    let value: Option<String> = missing.take(0).map_err(|e| e.to_string())?;
+    assert_eq!(value, None, "an unbound parameter reads as NONE");
+
+    let bound = match db
+        .query("SELECT VALUE reference FROM appt WHERE source_id = $order;")
+        .bind(("order", "order-1"))
+        .await
+    {
+        Ok(response) => response.check().map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    let mut bound = bound?;
+    let matched: Vec<String> = bound.take(0).map_err(|e| e.to_string())?;
+    assert_eq!(matched, ["TYPED"]);
+    Ok(())
+}

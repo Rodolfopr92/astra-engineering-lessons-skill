@@ -57,6 +57,8 @@ been compiled; see [the staged-code reference](../references/integrating-staged-
   "Cannot COMMIT".
 - **`RecordId` text.** `record::id(id)` in SQL, `to_sql()` / `key.to_sql()` in Rust; the file's
   imports also pin `surrealdb::IndexedResults` as the response type.
+- **Unbound parameters.** `WHERE source_id = $order` with no binding matches the rows that lack
+  the field and `RETURN $missing` is `NONE`; the request does not fail (added from Block 05).
 
 Run:
 
@@ -173,7 +175,7 @@ result: 11 passed (core_contract 5, schema_and_query_shapes 6), 0 failed
 ## 2026-10-30: staged-code pitfalls
 
 `tests/staged_code_pitfalls.rs` gained seven tests reduced from the fourteen repairs of DLF Block
-04 (code written without ever compiling). Two of them corrected the integration record itself:
+04 (code written without ever compiling), and an eighth from Block 05 later the same day. Two of them corrected the integration record itself:
 only four parameter names are protected, and a UNIQUE index over rows lacking the field is
 accepted in 3.2.4.
 
@@ -181,7 +183,7 @@ accepted in 3.2.4.
 date: 2026-10-30
 Rust: 1.97.0 (local), --locked
 resolved: surrealdb, surrealdb-core, -types, -types-derive, -collections, -strand = 3.2.4 (surrealdb-protocol 0.10.2)
-cargo test --locked --all-targets: core_contract 5, schema_and_query_shapes 6, staged_code_pitfalls 7; 18 passed, 0 failed
+cargo test --locked --all-targets: core_contract 5, schema_and_query_shapes 6, staged_code_pitfalls 8; 19 passed, 0 failed
 ```
 
 GitHub Actions: pending until the branch is pushed and the workflow runs; record the run id and

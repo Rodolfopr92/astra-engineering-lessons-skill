@@ -94,7 +94,8 @@ GitHub Actions, 2026-10-12:
 
 Fourteen repairs made while integrating a block of SurrealQL + SDK code that had never been
 compiled (DLF Block 04, merged through PR #7) were reduced to
-`reproducers/surrealdb-3.2.4/tests/staged_code_pitfalls.rs`, seven tests. Two corrected the
+`reproducers/surrealdb-3.2.4/tests/staged_code_pitfalls.rs`, eight tests (the eighth, unbound
+parameters, came from Block 05 later the same day). Two corrected the
 integration record itself: only four parameter names are protected (crate source
 `PROTECTED_PARAM_NAMES`), and a UNIQUE index over rows that lack the field is accepted. The SDK
 facts (`IndexedResults`, `check(self)`, `take_errors() -> HashMap`, no `Display` on `RecordId`)
@@ -105,7 +106,7 @@ Narrative: [integrating-staged-uncompiled-code.md](integrating-staged-uncompiled
 date: 2026-10-30
 Rust: 1.97.0 (local), --locked
 resolved: surrealdb, surrealdb-core, -types, -types-derive, -collections, -strand = 3.2.4 (surrealdb-protocol 0.10.2)
-cargo test --locked --all-targets: core_contract 5, schema_and_query_shapes 6, staged_code_pitfalls 7; 18 passed, 0 failed
+cargo test --locked --all-targets: core_contract 5, schema_and_query_shapes 6, staged_code_pitfalls 8; 19 passed, 0 failed
 ```
 
 GitHub Actions: pending (the workflow runs on pull requests and on pushes to main); record the
@@ -153,6 +154,7 @@ run id and head here when it runs.
 | `take_errors()` is a `HashMap<usize, Error>`; in a failed transaction the statements before the cause say "not executed due to a failed transaction", later ones "… cancelled transaction", `COMMIT` "Cannot COMMIT: the transaction was aborted due to a prior error"; the cause is the lowest non-cascade index | VERIFIED API + TESTED BEHAVIOR | crate source `src/method/query.rs`; reproducer `take_errors_is_unordered_and_the_cause_hides_among_cascade_errors`, local run 2026-10-30; DLF B04-P010 |
 | Exactly `$access`, `$auth`, `$token`, `$session` are protected: `LET` and `.bind()` fail with "'x' is a protected variable and cannot be set" | VERIFIED API + TESTED BEHAVIOR | `surrealdb-core-3.2.4/src/cnf/mod.rs` `PROTECTED_PARAM_NAMES`; reproducer `the_four_protected_parameter_names_are_refused_by_let_and_by_bind`, local run 2026-10-30; DLF B04-P009 |
 | `$value` and `$this` are accepted by `LET` (context-defined, not protected), so a collision shadows silently | TESTED BEHAVIOR | same reproducer, local run 2026-10-30 |
+| A parameter that was never bound evaluates to `NONE`: `WHERE field = $unbound` matches rows that lack the field and `RETURN $missing` is `NONE`; the request does not fail | TESTED BEHAVIOR | reproducer `an_unbound_parameter_is_none_and_matches_rows_that_lack_the_field`, local run 2026-10-30; DLF Block 05 test fixture |
 | `IF … ELSE IF … ELSE … END` closes with one `END`; a second `END` is "Parse error: Unexpected token `END`, expected Eof" and fails the whole request | TESTED BEHAVIOR | reproducer `an_if_else_if_chain_closes_with_one_end`, local run 2026-10-30; DLF B04-P002 |
 | `ORDER BY` accepts projected idioms only; an `IF` expression after `ORDER BY` is a parse error, a projected alias orders correctly | TESTED BEHAVIOR | reproducer `order_by_takes_projected_idioms_not_expressions`, local run 2026-10-30; DLF B04-P003 |
 
@@ -271,6 +273,9 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 | Futures passed to `tokio::join!` that borrow temporaries fail with E0716; bind the values with `let` first | CASE-STUDY EVIDENCE | DLF Block 04 acceptance-test fixtures |
 | A test asserting a literal registry size (15 migrations) breaks when the next migration lands; compare with `MIGRATIONS.len()` | CASE-STUDY EVIDENCE | DLF B04-P014 |
 | A package's "cumulative corrections" may already exist in the integrated tree; re-applying them duplicates behavior | CASE-STUDY EVIDENCE | DLF Block 04 sections D and E (would have duplicated PICK tasks) |
+| The second block of the same never-compiled package compiled first time after the SDK supplement; all defects were on the Block 04 list (unordered error map ×19, Clippy argument limit ×2, ORDER BY projection ×2, fixture E0716) | CASE-STUDY EVIDENCE | DLF Block 05 patch register, 2026-10-30 |
+| A command that consumes an integration event writes its own receipt evidence under the same event type, so counting by topic doubles | CASE-STUDY EVIDENCE | DLF Block 05 PACK → `wms.need_door` test, 2026-10-30 |
+| `pkill -f <pattern>` matches the shell that issues it and kills the session (exit 144); `pkill -f 'patt[e]rn'` or `pkill -x <name>` does not | TESTED BEHAVIOR | cloud container shell, 2026-10-30 |
 
 ---
 
