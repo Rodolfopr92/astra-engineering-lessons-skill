@@ -40,6 +40,24 @@ Checks in `tests/schema_and_query_shapes.rs` (added 2026-10-01):
 - **`UPSERT` modes.** `MERGE` keeps absent fields, while `CONTENT` replaces the record.
 - **SCHEMALESS checks.** SCHEMALESS tables still enforce `TYPE`/`ASSERT` on the fields they define, including an optional enumeration.
 
+Checks in `tests/staged_code_pitfalls.rs` (added 2026-10-30, from integrating code that had never
+been compiled; see [the staged-code reference](../references/integrating-staged-uncompiled-code.md)):
+
+- **Protected parameters.** Exactly `$access`, `$auth`, `$token`, `$session` are refused by `LET`
+  and by `.bind()`; `$value` and `$this` are accepted.
+- **`IF … ELSE IF … END`.** One `END` closes the chain; a second is a parse error.
+- **`ORDER BY` expressions.** An `IF` expression after `ORDER BY` is a parse error; a projected
+  alias orders correctly.
+- **Required record links.** `TYPE record<tx>` refuses `NONE` and an omitted field;
+  `option<record<tx>>` accepts absence.
+- **UNIQUE over absent values.** Defining the index over rows lacking the field is accepted, as
+  are later rows lacking it; duplicates fail the definition; the index enforces afterwards.
+- **`take_errors()` cascade.** `HashMap<usize, Error>`; in a failed transaction the cause sits
+  between "failed transaction" and "cancelled transaction" cascade texts, and `COMMIT` reports
+  "Cannot COMMIT".
+- **`RecordId` text.** `record::id(id)` in SQL, `to_sql()` / `key.to_sql()` in Rust; the file's
+  imports also pin `surrealdb::IndexedResults` as the response type.
+
 Run:
 
 ```bash
@@ -151,6 +169,23 @@ Rust: 1.96.0, --locked
 compiled: surrealdb-collections, surrealdb-strand, surrealdb-core, surrealdb-types, surrealdb-types-derive, surrealdb v3.2.4
 result: 11 passed (core_contract 5, schema_and_query_shapes 6), 0 failed
 ```
+
+## 2026-10-30: staged-code pitfalls
+
+`tests/staged_code_pitfalls.rs` gained seven tests reduced from the fourteen repairs of DLF Block
+04 (code written without ever compiling). Two of them corrected the integration record itself:
+only four parameter names are protected, and a UNIQUE index over rows lacking the field is
+accepted in 3.2.4.
+
+```text
+date: 2026-10-30
+Rust: 1.97.0 (local), --locked
+resolved: surrealdb, surrealdb-core, -types, -types-derive, -collections, -strand = 3.2.4 (surrealdb-protocol 0.10.2)
+cargo test --locked --all-targets: core_contract 5, schema_and_query_shapes 6, staged_code_pitfalls 7; 18 passed, 0 failed
+```
+
+GitHub Actions: pending until the branch is pushed and the workflow runs; record the run id and
+head here when it does.
 
 ## Cross-version rule
 

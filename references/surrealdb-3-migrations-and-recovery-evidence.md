@@ -309,7 +309,18 @@ What to do:
 
 **TESTED BEHAVIOR** (3.2.4). Confirmed with the SurrealDB CLI `3.2.4+20260803.93ab219` against an in-memory engine, then `reproducers/surrealdb-3.2.4/tests/schema_and_query_shapes.rs::if_not_exists_cannot_widen_an_existing_assert_overwrite_can` passed locally (Rust 1.98.1, 6/6 tests) and in GitHub Actions run 38314604229 (Rust 1.96.0).
 
-## 13. Out of scope: choosing SurrealDB's architectural authority role
+## 13. Normalize rows before a new UNIQUE index, and rewrite data transactionally
+
+A migration that adds a field and a UNIQUE index over it meets two facts (SurrealDB 3.2.4):
+
+- Defining the index over rows that lack the field is accepted, and rows that keep lacking it are still accepted afterwards: absent values do not collide. **TESTED BEHAVIOR.** Reproducer `a_unique_index_ignores_absent_values_so_normalize_rows_before_defining_it`.
+- Duplicates among the values the migration writes fail the index definition (``Database index `x` already contains [...]``). Put the normalization `UPDATE` first and the `DEFINE INDEX … UNIQUE` after it, so a duplicate fails at the definition with the data still consistent rather than mid-normalization.
+
+A migration that rewrites rows must run inside the same transaction as its APPLIED receipt. Through a non-transactional path the normalization persisted while a later statement failed, leaving half-applied rows (DLF Block 04, first populated-upgrade run). Prove it with a populated-upgrade test that injects a failure after every real statement and asserts that both the rows and the migration table are untouched, then reopens and performs the genuine upgrade. **CASE-STUDY EVIDENCE**; see [staged code §6](integrating-staged-uncompiled-code.md).
+
+---
+
+## 14. Out of scope: choosing SurrealDB's architectural authority role
 
 This reference deliberately does not answer questions such as:
 

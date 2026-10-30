@@ -126,6 +126,13 @@ Use `.take_errors()` when:
 
 DELPHIS deliberately uses `take_errors()` in its adapter boundary for indexed diagnostics. ARGOS often uses `.check()` in fail-closed mutation/migration paths.
 
+Two shapes to get right (SDK 3.2.4):
+
+- `check(self) -> Result<Self>` consumes the response. `q.check()?; q.take(0)` is E0382; write `let mut q = q.check()?;`.
+- `take_errors(&mut self) -> HashMap<usize, Error>` is unordered. Inside a failed transaction every statement carries an error: statements before the failing one say "The query was not executed due to a failed transaction", the failing one carries the cause, later ones say "… due to a cancelled transaction", and `COMMIT` says "Cannot COMMIT: the transaction was aborted due to a prior error". Neither `.into_iter().next()` nor the lowest index is the cause; report the lowest index whose message is not one of the three cascade texts.
+
+**VERIFIED API** (crate source) and **TESTED BEHAVIOR** (reproducer `take_errors_is_unordered_and_the_cause_hides_among_cascade_errors`, 2026-10-30). See [staged code §5](integrating-staged-uncompiled-code.md).
+
 **CASE-STUDY EVIDENCE**, grounded in the current documented API.
 
 ---

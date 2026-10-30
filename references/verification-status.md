@@ -5,7 +5,7 @@
 **Tauri documentation baseline:** 2.11.5 path APIs  
 **Rust reproducer toolchain:** 1.96.0  
 **Last full verification:** 2026-09-12  
-**Last partial verification:** 2026-10-01 (schema and query-shape reproducers; engine crate pinning)  
+**Last partial verification:** 2026-10-30 (staged-code pitfalls reproducers; earlier: 2026-10-12 `ASSERT` widening, 2026-10-01 schema/query shapes and engine pinning)  
 **Routine expiry:** 90 days maximum, or immediately on target-version mismatch
 
 This ledger exists to stop the skill from becoming the stale prior it was created to correct.
@@ -90,6 +90,27 @@ GitHub Actions, 2026-10-12:
 - Rust 1.96.0, with `--locked`. The log shows surrealdb-collections, surrealdb-strand, surrealdb-core, surrealdb-types, surrealdb-types-derive, surrealdb compiled at 3.2.4.
 - Result: `core_contract` 5 passed, `schema_and_query_shapes` 6 passed, 0 failed.
 
+### 2026-10-30: staged-code pitfalls (DLF Block 04)
+
+Fourteen repairs made while integrating a block of SurrealQL + SDK code that had never been
+compiled (DLF Block 04, merged through PR #7) were reduced to
+`reproducers/surrealdb-3.2.4/tests/staged_code_pitfalls.rs`, seven tests. Two corrected the
+integration record itself: only four parameter names are protected (crate source
+`PROTECTED_PARAM_NAMES`), and a UNIQUE index over rows that lack the field is accepted. The SDK
+facts (`IndexedResults`, `check(self)`, `take_errors() -> HashMap`, no `Display` on `RecordId`)
+were read from the 3.2.4 crate sources in the Cargo registry and are pinned by the file compiling.
+Narrative: [integrating-staged-uncompiled-code.md](integrating-staged-uncompiled-code.md).
+
+```text
+date: 2026-10-30
+Rust: 1.97.0 (local), --locked
+resolved: surrealdb, surrealdb-core, -types, -types-derive, -collections, -strand = 3.2.4 (surrealdb-protocol 0.10.2)
+cargo test --locked --all-targets: core_contract 5, schema_and_query_shapes 6, staged_code_pitfalls 7; 18 passed, 0 failed
+```
+
+GitHub Actions: pending (the workflow runs on pull requests and on pushes to main); record the
+run id and head here when it runs.
+
 ## SurrealDB Rust SDK / type contract
 
 | Claim | Status | Claim-level evidence |
@@ -106,6 +127,9 @@ GitHub Actions, 2026-10-12:
 | Pinning those three crates `=3.2.4` next to the SDK resolves the whole family to 3.2.4 | FALSE (corrected 2026-10-08) | The lock kept `surrealdb-collections` and `surrealdb-strand` at 3.3.0; see the next row. Original evidence: `reproducers/surrealdb-3.2.4/Cargo.lock`; local runs 2026-10-01 and CI run 36897934223 |
 | `surrealdb-core` 3.2.4 depends on `surrealdb-collections` and `surrealdb-strand` through `^3.2.4`; pinning all five crates (core, types, types-derive, collections, strand) resolves the engine to 3.2.4 | TESTED BEHAVIOR | crates.io dependency metadata for surrealdb-core 3.2.4; `reproducers/surrealdb-3.2.4/Cargo.lock`; local run 2026-10-08 and CI run 37824036016 |
 | `db.select()` requires `SurrealValue`; domain types deriving only Serde must select into `Option<serde_json::Value>` | VERIFIED API + CASE-STUDY EVIDENCE | [Rust SDK docs](https://docs.rs/surrealdb/3.2.4/surrealdb/struct.Surreal.html#method.select); Astra contract gateway |
+| The query response type in 3.2.4 is `surrealdb::IndexedResults`; `surrealdb::Response` (2.x) does not exist | VERIFIED API | crate source `surrealdb-3.2.4/src/lib.rs`; `staged_code_pitfalls.rs` imports it, local run 2026-10-30 |
+| `IndexedResults::check(self) -> Result<Self>` consumes the response, so `q.check()?; q.take(0)` is E0382 | VERIFIED API + CASE-STUDY EVIDENCE | crate source `src/method/query.rs`; DLF Block 04 patch B04-P008 |
+| `RecordId { table, key }` implements `ToSql` and `Debug` but not `Display`; `to_sql()` gives `item:sku1`, `key.to_sql()` gives `sku1` | VERIFIED API + TESTED BEHAVIOR | no `Display` impl in `surrealdb-types-3.2.4`; reproducer `record_id_text_comes_from_record_id_in_sql_or_to_sql_in_rust`, local run 2026-10-30; DLF B04-P007 (E0599) |
 
 ---
 
@@ -126,6 +150,11 @@ GitHub Actions, 2026-10-12:
 | `UPSERT … MERGE` keeps fields absent from the payload; `UPSERT … CONTENT` replaces the record | TESTED BEHAVIOR | Reproducer `upsert_merge_keeps_absent_fields_while_content_replaces_the_record`, local runs 2026-10-01 and CI run 36897934223 |
 | A lookup ordering by an unselected field shipped and failed on every call without surfacing the error | CASE-STUDY EVIDENCE | Astra message-log lookup, found in review, 2026-09 |
 | Escaping line-continuation backslashes in multi-line query strings (`\\`) causes `Parse error: Invalid token '\'`; single `\` or multi-line strings must be used | CASE-STUDY EVIDENCE | Astra contract gateway live queries |
+| `take_errors()` is a `HashMap<usize, Error>`; in a failed transaction the statements before the cause say "not executed due to a failed transaction", later ones "… cancelled transaction", `COMMIT` "Cannot COMMIT: the transaction was aborted due to a prior error"; the cause is the lowest non-cascade index | VERIFIED API + TESTED BEHAVIOR | crate source `src/method/query.rs`; reproducer `take_errors_is_unordered_and_the_cause_hides_among_cascade_errors`, local run 2026-10-30; DLF B04-P010 |
+| Exactly `$access`, `$auth`, `$token`, `$session` are protected: `LET` and `.bind()` fail with "'x' is a protected variable and cannot be set" | VERIFIED API + TESTED BEHAVIOR | `surrealdb-core-3.2.4/src/cnf/mod.rs` `PROTECTED_PARAM_NAMES`; reproducer `the_four_protected_parameter_names_are_refused_by_let_and_by_bind`, local run 2026-10-30; DLF B04-P009 |
+| `$value` and `$this` are accepted by `LET` (context-defined, not protected), so a collision shadows silently | TESTED BEHAVIOR | same reproducer, local run 2026-10-30 |
+| `IF … ELSE IF … ELSE … END` closes with one `END`; a second `END` is "Parse error: Unexpected token `END`, expected Eof" and fails the whole request | TESTED BEHAVIOR | reproducer `an_if_else_if_chain_closes_with_one_end`, local run 2026-10-30; DLF B04-P002 |
+| `ORDER BY` accepts projected idioms only; an `IF` expression after `ORDER BY` is a parse error, a projected alias orders correctly | TESTED BEHAVIOR | reproducer `order_by_takes_projected_idioms_not_expressions`, local run 2026-10-30; DLF B04-P003 |
 
 ---
 
@@ -159,6 +188,9 @@ GitHub Actions, 2026-10-12:
 | With default settings, a write to a table that was never defined succeeds with any field, so such a fixture cannot detect SCHEMAFULL refusals | TESTED BEHAVIOR | Same reproducer, local runs 2026-10-01 and CI run 36897934223 |
 | SCHEMALESS tables enforce `TYPE` / `ASSERT` on the fields they define; `option<string>` with `ASSERT $value = NONE OR $value IN [...]` is an optional enumeration | TESTED BEHAVIOR | CLI 3.2.4; reproducer `schemaless_tables_still_enforce_the_fields_they_define`, local runs 2026-10-01 and CI run 36897934223 |
 | A missing SCHEMAFULL field migration passed tests that created rows in an undefined table, and failed in production | CASE-STUDY EVIDENCE | Astra per-user language preference on a SCHEMAFULL `user` table, 2026-09 |
+| A SCHEMAFULL field `TYPE record<tx>` refuses `NONE` and an omitted field ("Couldn't coerce value for field … Expected `record<tx>` but found `NONE`"); `option<record<tx>>` accepts absence | TESTED BEHAVIOR | reproducer `a_schemafull_record_link_field_refuses_none_unless_declared_option`, local run 2026-10-30; DLF B04-P004 |
+| A UNIQUE index defined over rows lacking the field is accepted, later rows lacking it are accepted, duplicates fail the definition, and the index enforces afterwards | TESTED BEHAVIOR | reproducer `a_unique_index_ignores_absent_values_so_normalize_rows_before_defining_it`, local run 2026-10-30 |
+| Defining a UNIQUE index while rows lack the field fails | FALSE / NOT A GENERAL RULE | DLF Block 04 register assumed it (B04-P006); the reproducer above shows it is accepted in 3.2.4 |
 
 ---
 
@@ -198,6 +230,8 @@ GitHub Actions, 2026-10-12:
 | Migration-body checksums improve schema identity evidence | CASE-STUDY EVIDENCE | ARGOS |
 | Same-handle migration idempotence and process-restart durability are different claims | GENERAL TESTING RULE | Saturno vs ARGOS/DELPHIS evidence |
 | A documented rebuild/recovery design alone proves recovery works | FALSE | Execution evidence required |
+| A data-rewriting migration run outside the transactional path left normalized rows behind when a later statement failed | CASE-STUDY EVIDENCE | DLF Block 04 first populated-upgrade run, patch B04-P011 |
+| Normalize rows before defining a new UNIQUE index, so a duplicate fails at the definition with consistent data | TESTED BEHAVIOR (index behavior) + CASE-STUDY EVIDENCE (ordering) | reproducer `a_unique_index_ignores_absent_values_so_normalize_rows_before_defining_it`; DLF B04-P006 |
 
 Architecture choices such as whether SurrealDB is authoritative, derived, one store among several, or paired with an outbox are intentionally **out of scope** for this capability ledger.
 
@@ -232,6 +266,11 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 | A test that returns early when its environment variable is missing is reported `ok`; a live stage filtered by `live_tests` misses `live_db_tests` / `live_session_tests` modules | CASE-STUDY EVIDENCE | Astra gate review 2026-10-11 (seven live tests never ran) |
 | `git stash` is shared by all worktrees; `stash push -- <paths>` with no changes creates nothing, and a following `pop` applies and drops another worktree's stash | TESTED BEHAVIOR | git 2.43.0 throwaway repository, 2026-10-12; Astra incident 2026-10-10 |
 | Unprivileged `bwrap --uid N` maps the caller inside a user namespace; outside, the process keeps the caller's uid | TESTED BEHAVIOR | bubblewrap 0.9.0, `id` inside vs `ps` outside, 2026-10-09 |
+| Code written and statically "refined" without compiling needed fourteen repairs (parse, protected name, schema, index, SDK API, migration order and path, guard mismatch, Clippy limits) before its first test passed | CASE-STUDY EVIDENCE | DLF Block 04 patch register, 2026-10-29 |
+| Clippy `too_many_arguments` fires above seven parameters and fails a `-D warnings` build; grouping into a struct keeps behavior without suppression | VERIFIED API + CASE-STUDY EVIDENCE | Clippy lint docs (default threshold 7); DLF B04-P013 |
+| Futures passed to `tokio::join!` that borrow temporaries fail with E0716; bind the values with `let` first | CASE-STUDY EVIDENCE | DLF Block 04 acceptance-test fixtures |
+| A test asserting a literal registry size (15 migrations) breaks when the next migration lands; compare with `MIGRATIONS.len()` | CASE-STUDY EVIDENCE | DLF B04-P014 |
+| A package's "cumulative corrections" may already exist in the integrated tree; re-applying them duplicates behavior | CASE-STUDY EVIDENCE | DLF Block 04 sections D and E (would have duplicated PICK tasks) |
 
 ---
 

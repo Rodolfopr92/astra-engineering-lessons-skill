@@ -98,6 +98,8 @@ use surrealdb::types::{RecordId, SurrealValue};
 
 Do not reflexively generate old/internal paths such as `surrealdb::sql::Thing` for a 3.x target.
 
+The query response type is `surrealdb::IndexedResults`; the 2.x name `surrealdb::Response` does not exist in 3.2.4 (`src/lib.rs` re-exports `method::query::IndexedResults`, and `reproducers/surrealdb-3.2.4/tests/staged_code_pitfalls.rs` compiles against it). `RecordId` implements `ToSql`, not `Display`, so `to_string()` does not compile.
+
 **VERIFIED API.**
 
 ---

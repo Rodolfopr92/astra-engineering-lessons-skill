@@ -17,7 +17,7 @@ Its job is technical: correct stale model knowledge about what the current stack
 - Official SDK minimum Rust version: **1.89**
 - Tauri documentation baseline: **2.11.5** (`PathResolver` application-data APIs)
 - Last full verification pass: **2026-09-12**
-- Last partial verification: **2026-10-01** (schema and query-shape reproducers; engine crate pinning)
+- Last partial verification: **2026-10-30** (staged-code pitfalls reproducers: protected parameters, `IF … END`, `ORDER BY` expressions, required record links, UNIQUE over absent values, `take_errors()` cascade, `RecordId` text; earlier passes: 2026-10-12 `ASSERT` widening, 2026-10-01 schema/query shapes and engine pinning)
 - Routine reverification interval: **90 days maximum**
 
 ## 1. Hard version-decay guard
@@ -104,6 +104,12 @@ Do not deserialize intrinsic `id` into `String` unless the query deliberately ca
 
 Official: https://docs.rs/surrealdb/3.2.4/surrealdb/types/record_id/struct.RecordId.html
 
+### `RecordId` has no `Display`
+
+`RecordId { table: Table, key: RecordIdKey }` implements `ToSql` and `Debug`, not `Display`: `record_id.to_string()` is E0599. Use `to_sql()` for the `table:key` text, `key.to_sql()` for the bare key, or `record::id(id)` in SQL.
+
+**VERIFIED API** (no `Display` impl in `surrealdb-types-3.2.4`). Reproducer: `record_id_text_comes_from_record_id_in_sql_or_to_sql_in_rust`.
+
 ### Native Rust conversion
 
 `SurrealValue` is the native SDK value-conversion contract. Serde and `#[surreal(...)]` are distinct systems.
@@ -185,6 +191,23 @@ DEFINE FIELD language ON TABLE user TYPE option<string>
 
 **TESTED BEHAVIOR.** Reproducer: `schemaless_tables_still_enforce_the_fields_they_define`.
 
+### A required record link refuses `NONE`
+
+```surql
+DEFINE FIELD transaction_id ON TABLE movement TYPE record<tx>;          -- required
+DEFINE FIELD transaction_id ON TABLE movement TYPE option<record<tx>>;  -- absence allowed
+```
+
+`CREATE movement SET transaction_id = NONE`, or a `CREATE` that omits the field, fails with "Couldn't coerce value for field `transaction_id` … Expected `record<tx>` but found `NONE`". Create the linked record first, or declare the field optional in a migration.
+
+**TESTED BEHAVIOR.** Reproducer: `a_schemafull_record_link_field_refuses_none_unless_declared_option`.
+
+### UNIQUE indexes ignore absent values
+
+Defining a UNIQUE index over rows that lack the indexed field is accepted, and rows that keep lacking it are still accepted afterwards. The hazard of a migration that adds such an index is duplicates among the values it writes: normalize the rows first and define the index after, so a duplicate fails at the index definition with the data still consistent.
+
+**TESTED BEHAVIOR.** Reproducer: `a_unique_index_ignores_absent_values_so_normalize_rows_before_defining_it`.
+
 ### Widening an `ASSERT` on an existing database
 
 `DEFINE FIELD IF NOT EXISTS` does nothing when the field already exists. Re-running it with a wider list succeeds silently, the old rule stays, and writes with the new value are still refused:
@@ -216,6 +239,26 @@ Outer `Ok` does not prove every statement succeeded.
 
 Official: https://surrealdb.com/docs/reference/rust/concepts/error-handling
 
+### The response type is `IndexedResults`, and `check()` consumes it
+
+```rust
+use surrealdb::IndexedResults;
+
+let response: IndexedResults = db.query(sql).await?;
+let mut response = response.check()?; // check(self) -> Result<Self>
+let rows: Vec<Row> = response.take(0)?;
+```
+
+`surrealdb::Response` (the 2.x name) does not exist in 3.2.4. `check()` takes `self`, so calling `take()` on the original binding afterwards is E0382: rebind the checked response.
+
+**VERIFIED API** (crate source `surrealdb-3.2.4/src/lib.rs` and `src/method/query.rs`); `staged_code_pitfalls.rs` compiles against both facts.
+
+### `take_errors()` is unordered and a failed transaction cascades
+
+`take_errors(&mut self) -> HashMap<usize, Error>`. Inside a failed transaction every statement carries an error: the statements before the failing one say "The query was not executed due to a failed transaction", the failing one carries the cause (`An error occurred: BUSINESS_RULE_X` for a `THROW`), the later ones say "… due to a cancelled transaction", and `COMMIT` says "Cannot COMMIT: the transaction was aborted due to a prior error". `.into_iter().next()` returns an arbitrary entry and the lowest index is a cascade text: report the lowest index whose message is not one of the three cascade texts.
+
+**TESTED BEHAVIOR.** Reproducer: `take_errors_is_unordered_and_the_cause_hides_among_cascade_errors`. Details: [staged code §5](references/integrating-staged-uncompiled-code.md).
+
 ### ORDER BY needs its field in the projection
 
 ```surql
@@ -229,6 +272,34 @@ The error, ``Missing order idiom `created_at` in statement selection``, is raise
 - Code that treats an error as "no rows" goes silent for good.
 
 **TESTED BEHAVIOR.** Reproducer: `order_by_needs_its_field_selected_and_the_parse_error_fails_the_whole_request`.
+
+### `ORDER BY` takes projected idioms, not expressions
+
+```surql
+SELECT * FROM bucket ORDER BY IF status = 'AVAILABLE' THEN 0 ELSE 1 END;   -- parse error
+
+SELECT record::id(id) AS key, IF status = 'AVAILABLE' THEN 0 ELSE 1 END AS availability_rank, qty
+FROM bucket ORDER BY availability_rank, qty DESC;                            -- works
+```
+
+**TESTED BEHAVIOR.** Reproducer: `order_by_takes_projected_idioms_not_expressions`.
+
+### `IF … ELSE IF … ELSE … END` closes with one `END`
+
+```surql
+RETURN IF a THEN 1 ELSE IF b THEN 2 ELSE 3 END END;   -- Parse error: Unexpected token `END`
+RETURN IF a THEN 1 ELSE IF b THEN 2 ELSE 3 END;       -- works
+```
+
+The parse error fails the whole request, so every statement in it, valid ones included, is skipped.
+
+**TESTED BEHAVIOR.** Reproducer: `an_if_else_if_chain_closes_with_one_end`.
+
+### Exactly four parameter names are protected
+
+`$access`, `$auth`, `$token` and `$session` cannot be set by `LET` or by `.bind()`: "'session' is a protected variable and cannot be set". Names the engine defines in some contexts (`$value`, `$this`, `$before`, `$after`, `$parent`, `$event`, `$input`) are not protected: `LET $value = 3` is accepted, so a collision there shadows silently. Rename on both sides (`$count_session`).
+
+**TESTED BEHAVIOR** for the four names and for `$value` / `$this`; **VERIFIED API** for the list (`surrealdb-core-3.2.4/src/cnf/mod.rs`, `PROTECTED_PARAM_NAMES`). Reproducer: `the_four_protected_parameter_names_are_refused_by_let_and_by_bind`.
 
 ### `NONE` vs `NULL`
 
@@ -369,6 +440,9 @@ Official: https://docs.rs/tauri/2.11.5/tauri/path/struct.PathResolver.html
 17. **`#[serde(default)]` does not skip serialization.** In audited provenance structs, pair `#[serde(default)]` with `skip_serializing_if` to prevent default fields from polluting JSON and corrupting historical cryptographic hashes.
 18. **A document's own fields are not proof of its authority.** A status code, protocol or "authorized" flag inside an uploaded file is a claim by whoever produced the file; display it as stated by the file until a signature or the issuing authority confirms it.
 19. **`git stash` is shared by every worktree of a repository.** Never `stash pop` after a `stash push` that may have saved nothing; see [multi-agent §11](references/multi-agent-clobbering-and-concurrency.md).
+20. **Code that never compiled is a draft, not an implementation.** Budget for parse, schema, SDK and lint repairs before its first test; integrate one unit at a time and compile, test and lint it before the next. See [staged code](references/integrating-staged-uncompiled-code.md).
+21. **Read the integrated tree before applying a package's "cumulative corrections".** The fix may already exist; applying it again duplicates behavior (duplicate tasks, double deductions).
+22. **Compare against the registry, not a literal.** A test asserting "15 migrations" breaks when the next migration lands; assert `MIGRATIONS.len()`. Under `-D warnings`, group more than seven function arguments into a struct instead of suppressing the lint.
 
 ## 7. Reproducers are first-class evidence
 
@@ -401,6 +475,7 @@ A reproducer that has not run successfully is **not** `TESTED BEHAVIOR`. Record 
 | Multi-agent coordination | [multi-agent-clobbering-and-concurrency.md](references/multi-agent-clobbering-and-concurrency.md) | Worktree clobbering and optimistic concurrency. |
 | Structured XML & NF-e | [authoritative-xml-and-fiscal-parsing.md](references/authoritative-xml-and-fiscal-parsing.md) | Deterministic XML/NF-e and exact arithmetic. |
 | CI/testing discipline | [rigorous-ci-harness-and-testing-discipline.md](references/rigorous-ci-harness-and-testing-discipline.md) | Real-system gates, restart testing, exact-SHA evidence. |
+| Staged, never-compiled code | [integrating-staged-uncompiled-code.md](references/integrating-staged-uncompiled-code.md) | Repair classes from integrating code that never compiled: SurrealQL parse, schema and index traps, SDK 3.2.4 shapes, migration order, `-D warnings` gates. |
 
 ## 9. Maintenance rule
 
