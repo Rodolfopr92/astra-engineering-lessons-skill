@@ -5,7 +5,7 @@
 **Tauri documentation baseline:** 2.11.5 path APIs  
 **Rust reproducer toolchain:** 1.96.0  
 **Last full verification:** 2026-09-12  
-**Last partial verification:** 2026-10-30 (staged-code pitfalls reproducers; earlier: 2026-10-12 `ASSERT` widening, 2026-10-01 schema/query shapes and engine pinning)  
+**Last partial verification:** 2026-11-19 (DLF Block 07 integration case study; independent reproducer suite remains last fully verified on its recorded 2026-10-30 runs)
 **Routine expiry:** 90 days maximum, or immediately on target-version mismatch
 
 This ledger exists to stop the skill from becoming the stale prior it was created to correct.
@@ -271,7 +271,9 @@ Architecture choices such as whether SurrealDB is authoritative, derived, one st
 | Code written and statically "refined" without compiling needed fourteen repairs (parse, protected name, schema, index, SDK API, migration order and path, guard mismatch, Clippy limits) before its first test passed | CASE-STUDY EVIDENCE | DLF Block 04 patch register, 2026-10-29 |
 | Clippy `too_many_arguments` fires above seven parameters and fails a `-D warnings` build; grouping into a struct keeps behavior without suppression | VERIFIED API + CASE-STUDY EVIDENCE | Clippy lint docs (default threshold 7); DLF B04-P013 |
 | Futures passed to `tokio::join!` that borrow temporaries fail with E0716; bind the values with `let` first | CASE-STUDY EVIDENCE | DLF Block 04 acceptance-test fixtures |
-| A test asserting a literal registry size (15 migrations) breaks when the next migration lands; compare with `MIGRATIONS.len()` | CASE-STUDY EVIDENCE | DLF B04-P014 |
+| Compare receipt counts with `MIGRATIONS.len()` only when all registered migrations were applied; an intentionally older upgrade fixture must assert its applied version prefix | CASE-STUDY EVIDENCE | DLF B04-P014 and B07-P003; populated 0018→0019 upgrade tests, 2026-11-18 |
+| DLF Block 07 Silver suite passed 109 all-target tests and 27 focused tests (25 acceptance/policy + 2 migration); local strict Clippy, rustfmt, TypeScript, and Vite also passed | CASE-STUDY EVIDENCE | DLF PR #12, Rust 1.97.1, embedded SurrealKV, 2026-11-19; `docs/block07/DELIVERY/TEST_RESULTS.md`; no hosted checks on the stacked draft |
+| Silver status queries projected their `ORDER BY` keys; SCHEMAFULL Bronze document fixtures included migration-required `source_record_hash`; legacy-event fixtures asserted canonical owner/business/warehouse scope or warning fallback | CASE-STUDY EVIDENCE | DLF Block 07 patch register and focused acceptance/migration tests, 2026-11-19; see staged-integration reference §12 |
 | A package's "cumulative corrections" may already exist in the integrated tree; re-applying them duplicates behavior | CASE-STUDY EVIDENCE | DLF Block 04 sections D and E (would have duplicated PICK tasks) |
 | The second block of the same never-compiled package compiled first time after the SDK supplement; all defects were on the Block 04 list (unordered error map ×19, Clippy argument limit ×2, ORDER BY projection ×2, fixture E0716) | CASE-STUDY EVIDENCE | DLF Block 05 patch register, 2026-10-30 |
 | A command that consumes an integration event writes its own receipt evidence under the same event type, so counting by topic doubles | CASE-STUDY EVIDENCE | DLF Block 05 PACK → `wms.need_door` test, 2026-10-30 |
@@ -313,5 +315,32 @@ VERIFIED API for 3.2.4
   → re-check docs + reproducer
   → VERIFIED for new baseline only after evidence lands
 ```
+
+### 2026-11-19: DLF Block 07 Medallion Silver integration — case-study evidence
+
+This is project-level evidence, not an independent SurrealDB reproducer run. DLF's lockfile matched
+SurrealDB SDK/engine 3.2.4 with embedded SurrealKV and Tauri 2.11.5. The local toolchain was Rust
+1.97.1 / Cargo 1.97.1.
+
+```text
+branch: codex/block07-medallion-silver; draft PR #12 stacked on unaccepted Block 06
+all-target Rust suite: 109 passed, 0 failed (82 existing + 25 Block 07 acceptance/policy + 2 migration)
+focused Block 07 filter: 27 passed, 0 failed (25 acceptance/policy + 2 migration)
+strict all-target Clippy (-D warnings): passed
+manifest-scoped rustfmt: passed
+TypeScript no-emit and isolated Vite production build: passed (large-chunk warning is non-failing)
+hosted checks: none on the stacked draft; the repository workflow triggers only for PRs targeting main
+```
+
+The populated 0018→0020 proof preserves the scoped warehouse/owner/Bronze data and closes/reopens
+the embedded authority in-process; do not overstate it as a process-separated restart proof. The
+integration also supplied case-study instances of existing rules: assert the applied migration
+prefix for an old fixture; project fields used in `ORDER BY`; create fixtures from production
+SCHEMAFULL schema including required `source_record_hash`; and test owner/business/warehouse scope
+for legacy events. DLF delivery evidence and the draft review are linked from the
+[integration reference](integrating-staged-uncompiled-code.md#12-block-07-2026-11-19-migrations-follow-applied-prefixes-not-the-registry-head).
+
+No new standalone reproducer was added because these failures were DLF-specific fixture, query,
+and migration-harness integrations rather than a new independent SurrealDB engine behavior.
 
 Do not preserve a claim merely because it still looks plausible.
