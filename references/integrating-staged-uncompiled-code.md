@@ -174,11 +174,13 @@ done.
 - Put the normalization `UPDATE` before any new UNIQUE index (§4.2).
 - Add a populated-upgrade test that injects a failure after every real statement and asserts the
   rows and the migration table are untouched, then reopens and performs the genuine upgrade.
-- A test that asserts a literal registry size ("15 migrations after reopen") breaks when the
-  next migration lands; compare with `MIGRATIONS.len()`.
+- For an authority that applied the entire current registry, compare receipt count with
+  `MIGRATIONS.len()` rather than a literal count. For an upgrade fixture deliberately stopped at
+  an older version, assert the applied version prefix instead; the later registered migrations
+  have no receipt in that fixture.
 
-**CASE-STUDY EVIDENCE** (Block 04 patches B04-P006, B04-P011, B04-P014). The transactional
-requirement is consistent with [migrations and recovery evidence](surrealdb-3-migrations-and-recovery-evidence.md).
+**CASE-STUDY EVIDENCE** (Block 04 patches B04-P006, B04-P011, B04-P014; Block 07 patch B07-P003).
+The transactional requirement is consistent with [migrations and recovery evidence](surrealdb-3-migrations-and-recovery-evidence.md).
 
 ---
 
@@ -264,6 +266,21 @@ Two items were new and are now in the skill:
 Nine Block 05 tests (six supplied, three added) passed on the first integrated run after the
 repairs; strict Clippy and rustfmt clean. The full-suite result is in the DLF Block 05 delivery
 record.
+
+## 12. Block 07 (2026-11-18): registered migrations are not applied receipts
+
+Block 07 registered migration 0019 while a Block 06 upgrade fixture deliberately stopped at
+0018. That fixture had asserted `MIGRATIONS.len()`, which now expected a receipt for 0019 even
+though the test had not applied it. The repair asserts the applied prefix at 0018 (`len() - 1`),
+then expects the full registry count after applying 0019. The populated Block 07 migration test
+checks the same boundary, preserved warehouse/owner/Bronze evidence and reopen behavior.
+
+Use the full registry length only when the authority has applied every registered migration.
+For a fixture stopped at a prior version, derive the expected receipt count from the applied
+prefix. This is a migration-test harness lesson, not a SurrealDB engine behavior.
+
+**CASE-STUDY EVIDENCE**: DLF Block 07's complete 105-test all-target suite passed, including all
+21 Block 07 acceptance tests and both migration tests.
 
 ## Proving case study
 
