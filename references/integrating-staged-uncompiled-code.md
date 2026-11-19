@@ -267,7 +267,7 @@ Nine Block 05 tests (six supplied, three added) passed on the first integrated r
 repairs; strict Clippy and rustfmt clean. The full-suite result is in the DLF Block 05 delivery
 record.
 
-## 12. Block 07 (2026-11-18): registered migrations are not applied receipts
+## 12. Block 07 (2026-11-19): migrations follow applied prefixes, not the registry head
 
 Block 07 registered migration 0019 while a Block 06 upgrade fixture deliberately stopped at
 0018. That fixture had asserted `MIGRATIONS.len()`, which now expected a receipt for 0019 even
@@ -279,8 +279,19 @@ Use the full registry length only when the authority has applied every registere
 For a fixture stopped at a prior version, derive the expected receipt count from the applied
 prefix. This is a migration-test harness lesson, not a SurrealDB engine behavior.
 
-**CASE-STUDY EVIDENCE**: DLF Block 07's complete 105-test all-target suite passed, including all
-21 Block 07 acceptance tests and both migration tests.
+The same integration pass re-exposed existing rules in production Silver paths: order keys needed
+to be included in the projected query shape (§1.2); SCHEMAFULL Bronze document fixtures needed
+the migration-required `source_record_hash` (§3); and legacy WMS fixtures needed canonical
+owner/business/warehouse scope or an explicit, tested fallback warning (§7). These are
+application-level case studies, not new general SurrealDB engine behaviors. Their test helpers
+must still build schemas from the production migration, not permissive hand-written fixtures.
+
+**CASE-STUDY EVIDENCE**: DLF Block 07's complete 109-test all-target suite passed: 82 existing
+tests, 25 Block 07 acceptance/policy tests (21 supplied plus four policy cases), and two migration
+tests. The focused Block 07 run passed 27/27. Strict Clippy, manifest-scoped rustfmt, TypeScript
+no-emit and an isolated Vite production build also passed locally. The populated 0018 migration
+proof closes and reopens the embedded authority in-process; it is not a process-separated restart
+claim. The stacked GitHub draft had no hosted checks because the validation workflow targets `main`.
 
 ## Proving case study
 

@@ -17,7 +17,7 @@ Its job is technical: correct stale model knowledge about what the current stack
 - Official SDK minimum Rust version: **1.89**
 - Tauri documentation baseline: **2.11.5** (`PathResolver` application-data APIs)
 - Last full verification pass: **2026-09-12**
-- Last partial verification: **2026-10-30** (staged-code pitfalls reproducers: protected parameters, `IF … END`, `ORDER BY` expressions, required record links, UNIQUE over absent values, `take_errors()` cascade, `RecordId` text, unbound parameters; earlier passes: 2026-10-12 `ASSERT` widening, 2026-10-01 schema/query shapes and engine pinning)
+- Last partial verification: **2026-11-19** (DLF Block 07 case study: 109 all-target / 27 focused tests; see `references/verification-status.md`; the 2026-10-30 independent reproducers and earlier passes remain recorded there)
 - Routine reverification interval: **90 days maximum**
 
 ## 1. Hard version-decay guard
